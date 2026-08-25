@@ -1,0 +1,12 @@
+# Core
+numpy
+opencv-python-headless
+
+# Deep learning (feature matching).  For CPU-only install use:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch
+
+# Web app
+fastapi
+uvicorn[standard]
+python-multipart
