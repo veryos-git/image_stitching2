@@ -52,6 +52,7 @@ class IncrementalStitcher:
     def reset(self):
         self.map_img = None            # BGR uint8 canvas
         self.map_mask = None           # uint8 0/255 valid mask
+        self.map_weight = None         # float32 accumulated feather weight
         self.offset = np.array([0.0, 0.0])   # world origin in canvas coords
         self.map_features = None       # FeatureSet in *world* coordinates
         self.map_shape = None          # (H, W) world bbox for normalization
@@ -97,6 +98,8 @@ class IncrementalStitcher:
 
         self.map_img = image.copy()
         self.map_mask = np.full(image.shape[:2], 255, np.uint8)
+        self.map_weight = blender.feather_mask(self.map_mask,
+                                               self.config.feather_power)
         self.offset = np.array([0.0, 0.0])
         self.map_features = fs
         self.map_shape = gray.shape[:2]
@@ -199,8 +202,10 @@ class IncrementalStitcher:
         dy = int(round(self.offset[1] - new_offset[1]))
         new_map = np.zeros((new_H, new_W, 3), np.uint8)
         new_mask = np.zeros((new_H, new_W), np.uint8)
+        new_weight = np.zeros((new_H, new_W), np.float32)
         new_map[dy:dy + Hm, dx:dx + Wm] = self.map_img
         new_mask[dy:dy + Hm, dx:dx + Wm] = self.map_mask
+        new_weight[dy:dy + Hm, dx:dx + Wm] = self.map_weight
 
         # Warp the new image into the (world -> canvas) frame.
         M = translation_matrix(-new_offset[0], -new_offset[1]) @ H
@@ -217,13 +222,21 @@ class IncrementalStitcher:
         if self.config.exposure:
             g = self._estimate_gain(new_map, new_mask, warped, wmask)
             warped = np.clip(warped.astype(np.float32) * g, 0, 255).astype(np.uint8)
-        new_map, new_mask = self._blend_into_map(new_map, new_mask, warped,
-                                                 wmask, self.config.blend_levels)
+        if self.config.blend_mode == "raw":
+            new_map, new_mask = self._blend_into_map(new_map, new_mask, warped,
+                                                     wmask, self.config.blend_levels)
+            new_weight = (new_mask > 0).astype(np.float32)
+        else:
+            new_feather = blender.feather_mask(wmask, self.config.feather_power)
+            new_map, new_weight = self._blend_feather_into_map(
+                new_map, new_weight, warped, new_feather)
+            new_mask = (new_weight > 0).astype(np.uint8) * 255
         rep.stage_done("blend", "Blended")
 
         # -- commit state ---------------------------------------------- #
         self.map_img = new_map
         self.map_mask = new_mask
+        self.map_weight = new_weight
         self.offset = new_offset
         self.map_shape = (new_H, new_W)
 
@@ -288,7 +301,7 @@ class IncrementalStitcher:
 
     @staticmethod
     def _blend_into_map(map_img, map_mask, new_img, new_mask, levels=6):
-        """Multi-band blend the new image into the map (overlap region only)."""
+        """Raw paste: multi-band blend only the overlap box, hard-paste the rest."""
         H, W = map_img.shape[:2]
         overlap = (map_mask > 0) & (new_mask > 0)
         out = map_img.copy()
@@ -319,6 +332,22 @@ class IncrementalStitcher:
         paste = (new_mask > 0) & outside
         out[paste] = new_img[paste]
         return out, out_mask
+
+    @staticmethod
+    def _blend_feather_into_map(map_img, map_weight, new_img, new_feather):
+        """Feather-accumulate ``new_img`` into ``map_img`` (scan-mode style).
+
+        Every pixel is the normalized weighted average of every frame covering
+        it, using a distance-transform feather per frame, so there are no hard
+        seams at the overlap boundary.  ``map_weight`` is the accumulated
+        float32 weight and ``new_feather`` is the new frame's feather weight.
+        """
+        acc = map_img.astype(np.float32) * map_weight[..., None]
+        acc += new_img.astype(np.float32) * new_feather[..., None]
+        weight = map_weight + new_feather
+        out = np.clip(acc / np.maximum(weight[..., None], 1e-6),
+                      0, 255).astype(np.uint8)
+        return out, weight
 
     @staticmethod
     def _merge_features(map_fs, new_fs, cap=MAX_MAP_KEYPOINTS):

@@ -67,6 +67,30 @@ def warp_image(img, M, canvas_w, canvas_h):
 
 
 # --------------------------------------------------------------------------- #
+# Feather weights
+# --------------------------------------------------------------------------- #
+def feather_mask(mask, power=1.0):
+    """Distance-transform feather weight for a 0/255 (or boolean) valid mask.
+
+    Returns a float32 HxW array that is 1 in the interior of the valid region
+    and ramps smoothly to 0 at its border (raised to ``power``).  This is the
+    per-tile weight used by the incremental stitcher's feather blend so that a
+    new frame fades in without a hard seam.
+    """
+    m = (mask > 0).astype(np.uint8)
+    if not m.any():
+        return np.zeros(mask.shape[:2], np.float32)
+    dist = cv2.distanceTransform(m, cv2.DIST_L2, 3)
+    mx = float(dist.max())
+    if mx <= 0:
+        return m.astype(np.float32)
+    wgt = (dist / mx).astype(np.float32)
+    if power != 1.0:
+        wgt = np.power(wgt, power)
+    return np.maximum(wgt, 1e-4) * m
+
+
+# --------------------------------------------------------------------------- #
 # Exposure compensation
 # --------------------------------------------------------------------------- #
 def exposure_compensation(warped_images, masks, max_comp=0.6):
