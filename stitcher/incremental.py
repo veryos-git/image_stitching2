@@ -57,6 +57,10 @@ class IncrementalStitcher:
         self.map_shape = None          # (H, W) world bbox for normalization
         self.count = 0
         self.engine = None
+        # top-left of the most recently placed frame in map (canvas) coords,
+        # plus its size -- what a live overlay needs to draw the viewport marker
+        self.last_view = (0.0, 0.0)
+        self.last_frame_size = (0, 0)
 
     @property
     def empty(self):
@@ -97,6 +101,8 @@ class IncrementalStitcher:
         self.map_features = fs
         self.map_shape = gray.shape[:2]
         self.count = 1
+        self.last_view = (0.0, 0.0)
+        self.last_frame_size = (image.shape[1], image.shape[0])
 
         rep.stage_done("align", "Map initialized", {"map": self._map_dims()})
         rep.stage_done("blend", "Ready — add the next image")
@@ -229,6 +235,12 @@ class IncrementalStitcher:
                        scores=fs_new.scores,
                        shape=(new_H, new_W)))
         self.count = n
+        # where the freshly placed frame landed in the (new) map's canvas coords
+        self.last_view = (
+            float(corners_world[:, 0].min() - new_offset[0]),
+            float(corners_world[:, 1].min() - new_offset[1]),
+        )
+        self.last_frame_size = (w_new, h_new)
         self._emit_result()
         return self.map_img
 
