@@ -78,7 +78,9 @@ class StitchConfig:
     reference: str = "middle"          # middle | first
     # Compositing
     exposure: bool = True
+    blend_mode: str = "feather"        # feather | raw
     blend_levels: int = 6
+    feather_power: float = 1.0
     crop: bool = True
     crop_margin: int = 0
     max_output_dim: int = 12000
