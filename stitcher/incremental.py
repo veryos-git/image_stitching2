@@ -57,6 +57,8 @@ class IncrementalStitcher:
         self.map_features = None       # FeatureSet in *world* coordinates
         self.map_shape = None          # (H, W) world bbox for normalization
         self.count = 0
+        self.placed = []
+        self.pairwise_mode = self.config.engine not in ("sift","orb","superglue")
         self.engine = None
         # top-left of the most recently placed frame in map (canvas) coords,
         # plus its size -- what a live overlay needs to draw the viewport marker
@@ -70,7 +72,7 @@ class IncrementalStitcher:
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
-    def seed(self, image):
+    def seed(self, image, position=None):
         """Initialise the map from the first image (world == its pixels)."""
         self.reset()
         rep = self.reporter
@@ -79,6 +81,8 @@ class IncrementalStitcher:
 
         rep.plan({
             "engine": self.engine.name,
+            "engine_options": self.config.engine_options,
+            "device": str(getattr(self.engine,"device","cpu")),
             "weights": self.config.superglue_weights,
             "mode": "incremental",
             "alignment": self.config.alignment,
@@ -88,7 +92,8 @@ class IncrementalStitcher:
         rep.stage_done("prepare", "Seed image loaded", {"image": 1})
 
         rep.stage_start("features", "Detecting features…")
-        fs = self.engine.extract(gray)
+        from .contract import prepare_image
+        fs = prepare_image(self.engine,image,'Image 1') if self.pairwise_mode else self.engine.extract(gray)
         if self.config.viz:
             rep.image("features",
                       encode_b64(draw_keypoints(fs.small_gray,
@@ -103,6 +108,7 @@ class IncrementalStitcher:
                                                self.config.feather_power)
         self.offset = np.array([0.0, 0.0])
         self.map_features = fs
+        self.placed = [dict(features=fs,transform=np.eye(3),position=position)]
         self.map_shape = gray.shape[:2]
         self.count = 1
         self.last_view = (0.0, 0.0)
@@ -113,7 +119,7 @@ class IncrementalStitcher:
         self._emit_result()
         return self.map_img
 
-    def add(self, image):
+    def add(self, image, position=None):
         """Try to merge ``image`` into the map.  Raises :class:`StitchError`."""
         if self.empty:
             raise StitchError("Seed the map with a first image first.")
@@ -128,7 +134,8 @@ class IncrementalStitcher:
         rep.stage_done("prepare", f"Image {n} loaded", {"image": n})
 
         rep.stage_start("features", f"Detecting features of image {n}…")
-        fs_new = self.engine.extract(gray)
+        from .contract import prepare_image
+        fs_new = prepare_image(self.engine,image,f'Image {n}') if self.pairwise_mode else self.engine.extract(gray)
         if self.config.viz:
             rep.image("features",
                       encode_b64(draw_keypoints(fs_new.small_gray,
@@ -139,7 +146,40 @@ class IncrementalStitcher:
 
         # -- match against the map ------------------------------------- #
         rep.stage_start("match", f"Matching image {n} ↔ map…")
-        mkpts_map, mkpts_new, conf = self.engine.match(self.map_features, fs_new)
+        proposed_H = None
+        if self.pairwise_mode:
+            from .contract import match_pair
+            from .unordered import reliable_edge
+            candidates = []
+            for i, placed in enumerate(self.placed):
+                previous = placed['position']
+                if position is not None and previous is not None and sum(abs(a-b) for a,b in zip(position,previous)) != 1:
+                    continue
+                reference = placed['features']
+                matched = match_pair(self.engine,fs_new,reference)
+                H, count, reason = reliable_edge(matched.points0,matched.points1,fs_new.shape,reference.shape,
+                                                self.config.ransac_thresh,self.config.alignment)
+                rep.log(f'Image {n} ↔ {i+1}: {count}/{len(matched.points0)} inliers; {reason or "accepted"}',marker='match')
+                if self.config.viz:
+                    preview = draw_matches(fs_new.small_gray,reference.small_gray,
+                        matched.points0*fs_new.scale,matched.points1*reference.scale,matched.scores,max_draw=500)
+                    rep.image('match',encode_b64(preview),f'Matches {n} ↔ {i+1}',reason or 'Accepted overlap',
+                        dict(pair_diagnostic=dict(pair=[n,i+1],matches=len(matched.points0),inliers=count,
+                             accepted=H is not None,reason=reason,engine=self.config.engine,engine_options=self.config.engine_options),
+                             names=[fs_new.image_id,reference.image_id],drawn_matches=min(len(matched.points0),500)))
+                if H is not None:
+                    candidates.append((count,placed['transform']@H,matched,placed['transform']))
+            if not candidates:
+                raise StitchError('No reliable overlap with a placed grid neighbor. Try a different model or input resolution.')
+            candidates.sort(key=lambda item:item[0],reverse=True)
+            _, proposed_H, matched, reference_H = candidates[0]
+            if self.config.alignment == 'translation' and any(np.linalg.norm(candidate[1][:2,2]-proposed_H[:2,2])>2*self.config.ransac_thresh for candidate in candidates[1:]):
+                raise StitchError('Neighbor matches disagree on the global translation; the map was not changed.')
+            mkpts_new = matched.points0
+            mkpts_map = transform_points(matched.points1,reference_H)
+            conf = matched.scores
+        else:
+            mkpts_map, mkpts_new, conf = self.engine.match(self.map_features, fs_new)
         if len(mkpts_new) < 8:
             rep.stage_error("match", "Too few matches")
             raise StitchError(
@@ -153,7 +193,10 @@ class IncrementalStitcher:
 
         # -- align + expand -------------------------------------------- #
         rep.stage_start("align", "Estimating transform & expanding map…")
-        if self.config.alignment == "translation":
+        if proposed_H is not None:
+            H = proposed_H
+            mask = np.linalg.norm(transform_points(mkpts_new,H)-mkpts_map,axis=1) <= self.config.ransac_thresh
+        elif self.config.alignment == "translation":
             from .unordered import reliable_edge
             H, _, reason = reliable_edge(
                 mkpts_new, mkpts_map - self.offset, gray.shape[:2],
@@ -252,13 +295,14 @@ class IncrementalStitcher:
         self.offset = new_offset
         self.map_shape = (new_H, new_W)
 
-        kpts_world = transform_points(fs_new.keypoints, H)
-        self.map_features = self._merge_features(
-            self.map_features,
-            FeatureSet(keypoints=kpts_world.astype(np.float32),
-                       descriptors=fs_new.descriptors,
-                       scores=fs_new.scores,
-                       shape=(new_H, new_W)))
+        if self.pairwise_mode:
+            self.placed.append(dict(features=fs_new,transform=H.copy(),position=position))
+        else:
+            kpts_world = transform_points(fs_new.keypoints, H)
+            self.map_features = self._merge_features(
+                self.map_features,
+                FeatureSet(keypoints=kpts_world.astype(np.float32),
+                           descriptors=fs_new.descriptors,scores=fs_new.scores,shape=(new_H,new_W)))
         self.count = n
         # where the freshly placed frame landed in the (new) map's canvas coords
         self.last_view = (
@@ -280,6 +324,8 @@ class IncrementalStitcher:
         preview, _ = resize_to_max_dim(self.map_img, 2000)
         meta = {
             "engine": self.engine.name,
+            "engine_options": self.config.engine_options,
+            "device": str(getattr(self.engine,"device","cpu")),
             "num_images": self.count,
             "output": self._map_dims(),
             "elapsed": round(time.time() - self._t0, 3),

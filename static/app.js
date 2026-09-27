@@ -60,23 +60,60 @@ function setProgress(frac, label) {
 }
 
 /* ============================ presets ============================ */
-const PRESETS = {
-  fast:     { feature_max_dim: 512,  max_keypoints: 512,  sinkhorn_iterations: 20,  match_threshold: 0.2,
-              hint: "SuperPoint on a 512px image + 512 keypoints → ~4× less compute." },
-  balanced: { feature_max_dim: 1024, max_keypoints: 1024, sinkhorn_iterations: 50,  match_threshold: 0.2,
-              hint: "Features detected at 1024px, 1024 keypoints." },
-  best:     { feature_max_dim: 1600, max_keypoints: 2048, sinkhorn_iterations: 100, match_threshold: 0.2,
-              hint: "Outdoor-grade detail — slowest on CPU." },
-};
-
+let engineCatalog = [];
+let engineValues = {};
+function selectedEngine() { return engineCatalog.find(e => e.id === $("engine").value); }
 function applyPreset(name) {
-  const p = PRESETS[name] || PRESETS.balanced;
-  $("feature-max-dim").value = p.feature_max_dim;
-  $("max-keypoints").value = p.max_keypoints;
-  $("sinkhorn-iterations").value = p.sinkhorn_iterations;
-  $("match-threshold").value = p.match_threshold;
-  $("preset-hint").textContent = p.hint;
+  const entry = selectedEngine();
+  if (!entry) return;
+  const values = {...EngineControls.read($("engine-options")), ...entry.presets[name]};
+  EngineControls.render($("engine-options"), entry, values);
+  $("preset-hint").textContent = `${entry.label}: ${values.feature_max_dim} px · ${values.dense_sample_budget ?? values.max_keypoints} ${entry.capabilities.kind === 'pairwise' ? 'sampled correspondences' : 'sparse features'}`;
 }
+function renderEngineDetails(values) {
+  const entry = selectedEngine();
+  if (!entry) return;
+  EngineControls.render($("engine-options"), entry, values || engineValues[entry.id] || {});
+  $("engine-status").textContent = `${entry.status}. ${entry.setup || ''}${entry.capabilities.incremental ? '' : ' Batch grids and pair diagnostics only; incremental merging is unavailable.'}`;
+  $("engine-source").href = entry.source;
+  $("engine-source").title = entry.license;
+  $("engine-verify").disabled = !entry.installed || entry.implementation_status === 'blocked';
+}
+function renderEngineSelector(preferred = $("engine").value) {
+  const search = $("engine-search").value.toLowerCase();
+  const shown = engineCatalog.filter(e => `${e.label} ${e.family}`.toLowerCase().includes(search)
+    && (!$("engine-installed").checked || e.installed)
+    && (!$("engine-no-superpoint").checked || e.capabilities.uses_superpoint === false));
+  $("engine").replaceChildren();
+  const groups = new Map();
+  for (const entry of shown) {
+    const group = entry.implementation_status === 'blocked' ? 'Experimental / unavailable' : entry.family;
+    if (!groups.has(group)) { const el = document.createElement('optgroup'); el.label = group; groups.set(group, el); $("engine").append(el); }
+    groups.get(group).append(new Option(`${entry.label}${entry.available ? '' : ' — unavailable'}`,entry.id));
+  }
+  if (shown.some(e => e.id === preferred)) $("engine").value = preferred;
+  renderEngineDetails();
+  $("pair-retry-models").replaceChildren();
+  for (const entry of engineCatalog.filter(e => e.available)) $("pair-retry-models").add(new Option(entry.label, entry.id));
+}
+async function loadEngineCatalog(preferred) {
+  try { engineCatalog = await EngineControls.catalog(); renderEngineSelector(preferred); }
+  catch (error) { showBanner(error.message); }
+}
+$("engine-search").oninput = () => renderEngineSelector();
+$("engine-installed").onchange = () => renderEngineSelector();
+$("engine-no-superpoint").onchange = () => renderEngineSelector();
+$("engine").onchange = () => renderEngineDetails();
+$("engine-options").onchange = () => { const entry = selectedEngine(); if (entry) engineValues[entry.id] = EngineControls.read($("engine-options")); };
+$("engine-verify").onclick = async () => {
+  const entry = selectedEngine(); if (!entry) return;
+  $("engine-verify").disabled = true;
+  try { await EngineControls.verify(entry, EngineControls.read($("engine-options")), $("engine-status")); await loadEngineCatalog(entry.id); }
+  catch (error) { $("engine-status").textContent = error.message; }
+  finally { $("engine-verify").disabled = !entry.installed; }
+};
+// Historical inputs remain for loading old project values; model settings use the schema above.
+for (const id of ['weights','max-keypoints','match-threshold','feature-max-dim']) $(id).closest('.field').hidden = true;
 
 function resetUI() {
   clearMatchDiagnostics();
@@ -265,14 +302,48 @@ function showMatchPair() {
   const p = state.pairDiagnostics.get($("match-debug-pair").value);
   if (!p) return;
   $("match-debug-reason").textContent = `${p.accepted ? "Accepted overlap" : `Rejected: ${p.reason}`}\n${p.matches} candidate matches · ${p.inliers} geometric inliers${pairCrossesGroups(p.pair) ? " · These images belong to different overlap groups." : ""}`;
-  $("match-debug-names").textContent = `Left: ${p.names[0]}  |  Right: ${p.names[1]}`;
-  $("match-debug-image").src = p.image;
-  $("match-debug-full").href = p.image;
-  $("match-debug-legend").textContent = p.matches ? `Showing ${p.drawn} of ${p.matches} candidate matches.` : "No matched features were found for this pair.";
+  $("match-debug-names").textContent = `Left: ${p.names[0]}  |  Right: ${p.names[1]}${p.engine ? ` · ${p.engine} · checkpoint ${p.checkpoint?.id || 'unknown'} · ${p.device || 'unknown device'} · ${p.elapsed?.toFixed(3) || '?'} s` : ''}`;
+  const mode = $("match-debug-mode").value;
+  const image = p.previews?.[mode] || p.image;
+  $("match-debug-image").src = image;
+  $("match-debug-full").href = image;
+  $("match-debug-artifact").hidden = !p.artifact;
+  if (p.artifact) $("match-debug-artifact").href = p.artifact;
+  $("match-debug-legend").title = p.engine ? `${p.engine} · ${p.device || 'unknown device'} · ${p.elapsed?.toFixed(3) || '?'} s` : 'Historical run; rerun for complete diagnostics';
+  $("match-debug-legend").textContent = (p.matches ? `Showing up to 500 sampled lines in ${mode} mode from ${p.matches} correspondences.` : 'No matched features were found for this pair.') +
+    (p.confidence_available === false ? ' Native confidence unavailable.' : '') +
+    (!p.previews?.[mode] && mode !== 'all' ? ' This historical run has no filtered preview; rerun to record it.' : '');
 }
 $("match-debug-close").onclick = () => $("match-debug").close();
 $("match-debug-open").onclick = () => openMatchInspector();
-$("match-debug-pair").onchange = showMatchPair;
+$("match-debug-pair").onchange = () => { $("pair-retry-results").replaceChildren(); showMatchPair(); };
+$("match-debug-mode").onchange = showMatchPair;
+async function retryPair(selected) {
+  const pair = state.pairDiagnostics.get($("match-debug-pair").value)?.pair;
+  if (!pair || !selected.length) return;
+  const target = $("pair-retry-results"); target.textContent = 'Comparing models…';
+  $("pair-retry").disabled = $("pair-retry-current").disabled = true;
+  try {
+    const response = await fetch('/api/pairs/compare', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      pair, engines:selected, job_id:state.jobId, project_id:state.projectId,
+      engine_options:{[$("engine").value]:EngineControls.read($("engine-options"))},
+    })});
+    const data = await response.json(); if (!response.ok) throw Error(data.error || data.detail);
+    target.replaceChildren();
+    for (const row of data.results) {
+      const article = document.createElement('article');
+      const caption = document.createElement('p');
+      caption.textContent = `${row.engine}: ${row.accepted ? 'accepted' : row.reason} · ${row.inliers ?? 0}/${row.matches ?? 0} inliers · ${row.elapsed?.toFixed(3) ?? '?'} s · ${row.device ?? ''}`;
+      article.append(caption);
+      if (row.image) { const img = document.createElement('img'); img.src = row.image; img.alt = caption.textContent; article.append(img); }
+      if (row.artifact) { const link = document.createElement('a'); link.href = row.artifact; link.textContent = 'Download correspondences'; article.append(link); }
+      target.append(article);
+    }
+  } catch(error) { target.textContent = error.message; }
+  finally { $("pair-retry").disabled = $("pair-retry-current").disabled = false; }
+}
+$("pair-retry").onclick = () => retryPair([...$("pair-retry-models").selectedOptions].map(o => o.value));
+$("pair-retry-current").onclick = () => retryPair([$("engine").value]);
 
 function fitThumbnailGrid() {
   const content = $("grid-overlay-content");
@@ -498,6 +569,7 @@ function currentOptions() {
   return {
     filename_template: $("filename-template").value,
     engine: $("engine").value,
+    engine_options: JSON.stringify(EngineControls.read($("engine-options"))),
     weights: $("weights").value,
     max_keypoints: $("max-keypoints").value,
     match_threshold: $("match-threshold").value,
@@ -515,6 +587,7 @@ function currentOptions() {
 
 $("stitch-btn").addEventListener("click", async () => {
   if (state.running) return;
+  if (!selectedEngine()?.available) { showBanner("Select an available model or verify its inference first."); return; }
   if (state.images.length < 2) {
     showBanner("Add at least 2 images first.");
     return;
@@ -693,8 +766,29 @@ async function openProject(pid) {
     state.projectId = pid;
     state.jobId = null;
     setConn("idle");
+    const opts = data.meta.options || {};
+    $("engine-search").value = '';
+    $("engine-installed").checked = $("engine-no-superpoint").checked = false;
+    await loadEngineCatalog(opts.engine || data.meta.engine);
+    renderEngineDetails(opts.engine_options || {...opts, superglue_weights: opts.superglue_weights || opts.weights});
+    for (const [key, id] of Object.entries({alignment:'alignment',filename_template:'filename-template',ransac_thresh:'ransac-thresh',reference:'reference',blend_levels:'blend-levels'})) {
+      if (opts[key] !== undefined) $(id).value = opts[key];
+    }
+    for (const key of ['crop','refine','exposure']) if (opts[key] !== undefined) $(key).checked = opts[key];
+    $("alignment").dispatchEvent(new Event('change'));
     $("project-name").value = data.meta.name || "";
+    state.images = await Promise.all((data.inputs || []).map(async input => {
+      const response = await fetch(input.url);
+      if (!response.ok) throw Error(`Could not load saved input ${input.name}`);
+      return new File([await response.blob()],input.name);
+    }));
+    state.positions = opts.grid_positions || [];
+    state.gridValid = state.positions.length === state.images.length && state.images.length > 0;
+    renderThumbs();
+    $("stitch-btn").disabled = !state.gridValid || state.images.length < 2;
     log(`↺ loaded project "${data.meta.name}"`);
+    if (!data.events.some(e => e.meta?.pair_diagnostic || e.type === 'pair_diagnostic'))
+      log('This project has no pair diagnostics. Rerun the grid to record overlaps.');
     data.events.forEach((e) => handleEvent(e));
   } catch (err) {
     showBanner("Load failed: " + err.message);
@@ -728,6 +822,7 @@ function incrOptions() {
   return {
     filename_template: $("filename-template").value,
     engine: $("engine").value,
+    engine_options: JSON.stringify(EngineControls.read($("engine-options"))),
     weights: $("weights").value,
     max_keypoints: $("max-keypoints").value,
     match_threshold: $("match-threshold").value,
@@ -857,3 +952,5 @@ $("incr-reset").addEventListener("click", incrReset);
 
 applyPreset("balanced");
 loadProjects();
+
+loadEngineCatalog("superglue");

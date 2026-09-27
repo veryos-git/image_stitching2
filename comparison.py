@@ -12,7 +12,7 @@ import torch
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from stitcher import PanoramaStitcher, StitchConfig, ProgressReporter
-from stitcher.catalog import engines, CATALOG
+from stitcher.catalog import engines, CATALOG, require_available
 
 router = APIRouter()
 ROOT = Path(__file__).resolve().parent
@@ -84,7 +84,10 @@ def run(id, paths, selected, settings):
                 cv2.setRNGSeed(0)
                 np.random.seed(0)
                 torch.manual_seed(0)
-                cfg = StitchConfig(engine=engine, weights_dir=str(ROOT/'weights'), viz=False, max_output_dim=4096, **settings)
+                per_engine = dict(settings)
+                options = per_engine.pop('engine_options',{}).get(engine,{})
+                cfg = StitchConfig(engine=engine,engine_options=options,weights_dir=str(ROOT/'weights'),viz=False,max_output_dim=4096,**per_engine)
+                row['engine_options'] = cfg.engine_options
                 stitcher = PanoramaStitcher(cfg, ProgressReporter(emit=emit))
                 result = stitcher.stitch_paths(paths)
                 dest = RUNS/id/(engine+'.jpg')
@@ -121,10 +124,11 @@ async def compare(options: str = Form(...), files: list[UploadFile] = File(defau
         selected = list(dict.fromkeys(opts['engines']))
         if not selected or any(e not in CATALOG for e in selected): raise ValueError('Choose valid engines')
         settings = dict(alignment=opts.get('alignment','homography'), feature_max_dim=int(opts.get('feature_max_dim',1024)), max_keypoints=int(opts.get('max_keypoints',2048)), crop=bool(opts.get('crop',False)), pairing=opts.get('pairing','sequential'), disconnected=opts.get('disconnected','largest'))
+        settings['engine_options'] = {id:require_available(id,opts.get('engine_options',{}).get(id),settings) for id in selected}
         if settings['alignment'] not in ('homography','translation'): raise ValueError('Invalid alignment')
         if settings['pairing'] not in ('sequential','unordered') or settings['disconnected'] not in ('largest','reject'): raise ValueError('Invalid stitching mode')
         if not 256 <= settings['feature_max_dim'] <= 1600 or not 128 <= settings['max_keypoints'] <= 8192: raise ValueError('Settings out of range')
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
         raise HTTPException(400, str(exc))
     with lock:
         if any(r['status'] in ('queued','running') for r in records.values()):
@@ -178,3 +182,22 @@ def output(id: str, engine: str):
     path = RUNS/id/(engine+'.jpg')
     if not path.exists(): raise HTTPException(404)
     return FileResponse(path)
+
+
+@router.post('/api/engines/{engine}/verify')
+def verify(engine: str, options: dict = None):
+    from stitcher.verification import verify_engine
+    try:
+        with compute_lock:
+            record = verify_engine(engine, options)
+        return record
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+
+@router.get('/api/engines/{engine}/verification-preview')
+def verification_preview(engine: str):
+    from stitcher.verification import RECORDS
+    if engine not in CATALOG or not (RECORDS/(engine+'.jpg')).is_file():
+        raise HTTPException(404,'No verification artifact')
+    return FileResponse(RECORDS/(engine+'.jpg'))

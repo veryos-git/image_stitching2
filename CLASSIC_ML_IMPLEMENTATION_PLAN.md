@@ -2,6 +2,15 @@
 
 Implementation handoff — 2026-09-27. This document specifies proposed work; it does not imply the algorithms are already implemented or tested. The [research report](ML_FEATURE_MATCHING_RESEARCH.md) contains the full inventory, upstream links, and licensing findings.
 
+## Implementation record
+
+The shared catalog, Stage 1 integration, adapter contract, explicit inference verification,
+classic controls, pair retries and durable diagnostics are implemented. Research entries
+in Stages 2–3 remain explicitly blocked until their adapter/checkpoint/runtime work is
+complete. See [implementation and measured validation](validation/classic_ml/README.md)
+for the exact scope, CPU evidence, unresolved work and 77-tile results. The acceptance
+checklist below remains the full target, not a claim that every research adapter is finished.
+
 ## Objective and existing behavior to preserve
 
 Allow users to select and compare all viable learned matching pipelines from the research inventory directly in `/classic`. Integrate in stages, keeping unfinished methods visible as unavailable rather than runnable. Components such as descriptors and refiners must be assembled into validated pipelines before becoming selectable engines.

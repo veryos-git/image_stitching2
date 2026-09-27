@@ -372,3 +372,9 @@ header .badge {
 #filename-warning { max-width: 620px; width: calc(100% - 48px); color: var(--text, #eee); background: #181e2a; border: 1px solid #566079; border-radius: 12px; padding: 24px; }
 #filename-warning::backdrop { background: #0009; }
 #filename-warning a { color: #8bbdff; }
+
+.engine-option { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; margin: .6rem 0; align-items: center; }
+#engine-options input, #engine-options select { min-width: 0; width: 100%; }
+#pair-retry-results img { max-width: 100%; }
+#engine-search { width: 100%; margin-bottom: .5rem; }
+[hidden] { display: none !important; }

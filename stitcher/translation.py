@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 
-def reliable_translation(source, target, source_shape, target_shape, threshold=3.):
+def reliable_translation(source, target, source_shape, target_shape, threshold=3., round_offset=True, details=None):
     source = np.asarray(source, dtype=np.float64)
     target = np.asarray(target, dtype=np.float64)
     valid = np.isfinite(source).all(axis=1) & np.isfinite(target).all(axis=1)
@@ -20,9 +20,13 @@ def reliable_translation(source, target, source_shape, target_shape, threshold=3
         mask = np.linalg.norm(offsets - offset, axis=1) <= threshold
         offset = np.median(offsets[mask], axis=0)
     # Whole-pixel placement avoids any resampling of the original images.
-    offset = np.rint(offset).astype(np.int64)
+    if round_offset:
+        offset = np.rint(offset).astype(np.int64)
     mask = np.linalg.norm(offsets - offset, axis=1) <= threshold
     count = int(mask.sum())
+    if details is not None:
+        from .geometry import translation_matrix
+        details['transform'] = translation_matrix(*offset)
     if count < 12 or count < .5 * len(source):
         return None, count
     for points, shape in ((source[mask], source_shape), (target[mask], target_shape)):

@@ -24,13 +24,13 @@ def plausible_transform(H, source, target):
     return overlap / min(area, tw * th) >= .03
 
 
-def reliable_edge(x, y, shape0, shape1, threshold, alignment="homography"):
+def reliable_edge(x, y, shape0, shape1, threshold, alignment="homography", details=None):
     if len(x) < 12:
         return None, 0, 'fewer than 12 matches'
     if alignment == "translation":
         from .translation import reliable_translation
         from .geometry import translation_matrix
-        offset, count = reliable_translation(x, y, shape0, shape1, threshold)
+        offset, count = reliable_translation(x, y, shape0, shape1, threshold, round_offset=False, details=details)
         if offset is None:
             return None, count, "no reliable translation-only overlap (same scale and orientation required)"
         return translation_matrix(*offset), count, None
@@ -39,6 +39,7 @@ def reliable_edge(x, y, shape0, shape1, threshold, alignment="homography"):
         if H is None:
             return None, 0, 'no homography'
         count, mask = homography_inliers(x, y, H)
+        if details is not None: details['transform'] = H
         if count < 12 or count / len(x) < .25:
             return None, count, 'insufficient inlier support (12 and 25% required)'
         for points, shape in ((x[mask], shape0), (y[mask], shape1)):
@@ -66,20 +67,31 @@ def align_unordered(engine, features, config, reporter):
     reporter.stage_start('match', f'Searching {len(pairs)} {"grid neighbor" if config.pairing == "grid" else "image"} pairs…')
     for k, (i, j) in enumerate(pairs):
         reporter.stage_progress('match', k / len(pairs), f'Overlap search {k+1}/{len(pairs)}: image {i+1} ↔ {j+1}')
-        x, y, confidence = engine.match(features[i], features[j])
-        H, count, reason = reliable_edge(x, y, features[i].shape, features[j].shape, config.ransac_thresh, config.alignment)
-        diagnostics.append(dict(pair=[i+1, j+1], matches=len(x), inliers=int(count), accepted=H is not None, reason=reason))
+        from .diagnostics import evaluate_pair
+        try:
+            H, diagnostic, preview = evaluate_pair(engine, features[i], features[j], config, [i+1,j+1])
+        except Exception as exc:
+            H, preview = None, None
+            diagnostic = dict(pair=[i+1,j+1],matches=0,inliers=0,accepted=False,
+                engine=config.engine,engine_options=config.engine_options,reason=str(exc),
+                rejection=dict(code='matching_failed',message=str(exc)))
+            if config.diagnostics_dir:
+                import json
+                from pathlib import Path
+                Path(config.diagnostics_dir).mkdir(parents=True,exist_ok=True)
+                (Path(config.diagnostics_dir)/f'{i+1}-{j+1}.json').write_text(json.dumps(diagnostic))
+        diagnostics.append(diagnostic)
+        names = [config.input_names[t] if config.input_names else f'Image {t+1}' for t in (i,j)]
+        reporter._send(dict(type='pair_diagnostic', diagnostic=diagnostic, names=names))
         if config.viz:
-            from .utils import draw_matches, encode_b64
-            preview = draw_matches(features[i].small_gray, features[j].small_gray,
-                                   x * features[i].scale, y * features[j].scale,
-                                   confidence, max_draw=500)
-            reporter.image('match', encode_b64(preview),
-                           f'Matches {i+1} ↔ {j+1}', reason or 'Accepted overlap',
-                           {'pair_diagnostic': diagnostics[-1], 'drawn_matches': min(len(x), 500),
-                            'names': [config.input_names[t] if config.input_names else f'Image {t+1}' for t in (i, j)]})
+            if preview is None:
+                from .utils import draw_matches, encode_b64
+                preview = encode_b64(draw_matches(features[i].small_gray,features[j].small_gray,
+                    np.empty((0,2)),np.empty((0,2))))
+            reporter.image('match', preview, f'Matches {i+1} ↔ {j+1}', diagnostic['reason'] or 'Accepted overlap',
+                {'pair_diagnostic':diagnostic,'drawn_matches':min(diagnostic['matches'],500),'names':names})
         if H is not None:
-            edges.append((count, i, j, H))
+            edges.append((diagnostic['inliers'],i,j,H))
     reporter.stage_done('match', f'{len(edges)}/{len(pairs)} reliable overlaps', {'matches_per_pair':[p['matches'] for p in diagnostics]})
     reporter.stage_start('align', 'Building overlap graph…')
     # Kruskal: highest-inlier edges form a maximum spanning forest.
@@ -101,6 +113,10 @@ def align_unordered(engine, features, config, reporter):
     included = components[0]
     excluded = [i for i in range(n) if i not in included]
     graph = dict(mode=config.pairing, grid_positions=config.grid_positions, pairs=diagnostics, components=[[i+1 for i in c] for c in components], included=[i+1 for i in included], excluded=[i+1 for i in excluded], tested_pairs=len(pairs), accepted_pairs=len(edges))
+    if config.diagnostics_dir:
+        import json
+        from pathlib import Path
+        (Path(config.diagnostics_dir)/'graph.json').write_text(json.dumps(graph,indent=2))
     reporter.stage_done('align', f'{len(components)} overlap group(s); {len(included)}/{n} images in largest group', {'inliers_per_pair':[p['inliers'] for p in diagnostics], 'graph':graph})
     if len(included) < 2 or (excluded and config.disconnected == 'reject'):
         message = 'No reliable overlap found. These images cannot be stitched into one panorama.' if len(included) < 2 else f'Images form {len(components)} disconnected groups. Use “Largest connected group” to produce a partial panorama.'

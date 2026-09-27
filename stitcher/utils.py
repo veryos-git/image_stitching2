@@ -76,6 +76,7 @@ def draw_matches(gray0, gray1, mkpts0, mkpts1, conf=None, max_draw=2000):
     mkpts1 = np.asarray(mkpts1, dtype=np.float32)
     if len(mkpts0) == 0:
         return out
+    missing_confidence = conf is None
     if conf is None:
         conf = np.ones(len(mkpts0))
     conf = np.asarray(conf, dtype=np.float32)
@@ -92,7 +93,7 @@ def draw_matches(gray0, gray1, mkpts0, mkpts1, conf=None, max_draw=2000):
     for i in idx:
         c = int(255 * norm[i])
         # red -> green by confidence (low -> high)
-        color = (0, c, 255 - c)
+        color = (255, 180, 80) if missing_confidence else (0, c, 255 - c)
         x0, y0 = int(mkpts0[i, 0]), int(mkpts0[i, 1])
         x1, y1 = int(mkpts1[i, 0]) + W0, int(mkpts1[i, 1])
         cv2.line(out, (x0, y0), (x1, y1), color, 1, cv2.LINE_AA)

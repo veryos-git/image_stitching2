@@ -39,7 +39,8 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 PROJECTS_DIR = BASE_DIR / "projects"
 INCR_DIR = BASE_DIR / "incremental"
 
-from comparison import router as comparison_router
+from comparison import router as comparison_router, compute_lock
+from stitcher.catalog import require_available, resolve_options, CATALOG, validate_geometry
 
 app = FastAPI(title="AI Panorama Stitcher", version="1.0.0")
 app.include_router(comparison_router)
@@ -111,7 +112,8 @@ def _run_job(job_id: str, paths, config_dict):
     cfg = StitchConfig(**config_dict)
     stitcher = PanoramaStitcher(cfg, reporter)
     try:
-        result = stitcher.stitch_paths(paths)
+        with compute_lock:
+            result = stitcher.stitch_paths(paths)
         job.result_path = Path(job.upload_dir) / "panorama.jpg"
         cv2.imwrite(str(job.result_path), result.panorama,
                     [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -146,9 +148,10 @@ def health():
 def _stitch_config(engine, weights, max_keypoints, match_threshold,
                    feature_max_dim, sinkhorn_iterations, ransac_thresh,
                    reference, refine, blend_levels, exposure, crop, viz=True,
-                   min_extend_ratio=0.0, min_extend_px=0.0, alignment="homography"):
+                   min_extend_ratio=0.0, min_extend_px=0.0, alignment="homography", engine_options=None):
     return StitchConfig(
         engine=engine,
+        engine_options=engine_options or {},
         alignment=alignment,
         superglue_weights=weights,
         max_keypoints=int(max_keypoints),
@@ -193,6 +196,7 @@ async def stitch(
     files: list[UploadFile] = File(...),
     filename_template: str = Form(DEFAULT_TEMPLATE),
     engine: str = Form("superglue"),
+    engine_options: str = Form("{}"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
@@ -210,7 +214,11 @@ async def stitch(
         return JSONResponse({"error": "Upload at least 2 images."}, status_code=400)
 
     try:
+        validate_geometry(ransac_thresh,reference,blend_levels)
         positions = require_positions([f.filename or "" for f in files], filename_template)
+        resolved = require_available(engine, json.loads(engine_options), dict(
+            superglue_weights=weights,max_keypoints=max_keypoints,match_threshold=match_threshold,
+            feature_max_dim=feature_max_dim,sinkhorn_iterations=sinkhorn_iterations))
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
@@ -233,7 +241,9 @@ async def stitch(
 
     cfg = _stitch_config(engine, weights, max_keypoints, match_threshold,
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
-                         reference, refine, blend_levels, exposure, crop, alignment=alignment)
+                         reference, refine, blend_levels, exposure, crop, alignment=alignment, engine_options=resolved)
+    cfg.diagnostics_dir = str(job_dir/'diagnostics')
+    cfg.diagnostics_url = f'/api/jobs/{job_id}/diagnostics'
     cfg.pairing = "grid"
     cfg.grid_positions = positions
     cfg.input_names = [f.filename for f in files]
@@ -354,11 +364,19 @@ def _save_project(job_id: str, name: str) -> dict:
         shutil.copy(job.result_path, base / "result.jpg")
         result_rel = "result.jpg"
 
+    diagnostics = Path(job.upload_dir)/'diagnostics' if job.upload_dir else None
+    if diagnostics and diagnostics.is_dir():
+        shutil.copytree(diagnostics,base/'diagnostics')
+        for path in (base/'diagnostics').rglob('*.json'):
+            path.write_text(path.read_text().replace(f'/api/jobs/{job_id}/diagnostics',
+                f'/api/projects/{pid}/files/diagnostics'))
+
     # Persist the event history, extracting base64 images to files.
     n = 0
     with open(base / "events.jsonl", "w") as fh:
         for ev in job.history():
-            ev = dict(ev)
+            ev = json.loads(json.dumps(ev).replace(f'/api/jobs/{job_id}/diagnostics',
+                f'/api/projects/{pid}/files/diagnostics'))
             if ev.get("type") == "image" and ev.get("image", "").startswith("data:"):
                 try:
                     raw = base64.b64decode(ev["image"].split(",", 1)[1])
@@ -428,7 +446,16 @@ def get_project(pid: str):
             if img and not img.startswith(("data:", "/api", "http")):
                 ev["image"] = f"/api/projects/{pid}/files/{img}"
             events.append(ev)
-    return {"meta": meta, "events": events}
+    old = meta.get('options', {})
+    try:
+        old['engine_options'] = resolve_options(old.get('engine',meta.get('engine','superglue')),old.get('engine_options'),old)
+    except ValueError:
+        pass  # Historical projects remain readable even if a model is unavailable.
+    input_paths = sorted((base/'inputs').glob('in_*'))
+    names = old.get('input_names') or [p.name for p in input_paths]
+    inputs = [dict(name=names[i] if i<len(names) else p.name,url=f'/api/projects/{pid}/files/inputs/{p.name}')
+              for i,p in enumerate(input_paths)]
+    return {"meta": meta, "events": events, "inputs": inputs}
 
 
 @app.post("/api/projects/{pid}/rename")
@@ -488,6 +515,7 @@ def incremental_start(
     file: UploadFile = File(...),
     filename_template: str = Form(DEFAULT_TEMPLATE),
     engine: str = Form("superglue"),
+    engine_options: str = Form("{}"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
@@ -502,7 +530,11 @@ def incremental_start(
     min_extend_px: float = Form(0.0),
 ):
     try:
+        validate_geometry(ransac_thresh,blend_levels=blend_levels)
         position = require_positions([file.filename or ""], filename_template)[0]
+        resolved = require_available(engine, json.loads(engine_options), dict(
+            superglue_weights=weights,max_keypoints=max_keypoints,match_threshold=match_threshold,
+            feature_max_dim=feature_max_dim,sinkhorn_iterations=sinkhorn_iterations), incremental=True)
     except ValueError as exc:
         return JSONResponse({"ok": False, "message": str(exc), "events": []}, status_code=400)
     sid = uuid.uuid4().hex[:12]
@@ -510,7 +542,7 @@ def incremental_start(
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
                          "middle", refine, blend_levels, exposure, False,
                          min_extend_ratio=min_extend_ratio,
-                         min_extend_px=min_extend_px, alignment=alignment)
+                         min_extend_px=min_extend_px, alignment=alignment, engine_options=resolved)
     stitcher = IncrementalStitcher(
         cfg, download_url=f"/api/incremental/{sid}/map.jpg")
     session = IncrementalSession(sid, stitcher)
@@ -522,11 +554,12 @@ def incremental_start(
     before = len(session.events)
     try:
         img = _read_upload(file)
-        stitcher.seed(img)
+        with compute_lock:
+            stitcher.seed(img,position=position)
         _save_map(sid, stitcher.map_img)
         return {"ok": True, "message": "Map created", "session_id": sid,
                 "count": stitcher.count, "events": session.events[before:]}
-    except StitchError as exc:
+    except Exception as exc:
         return {"ok": False, "message": str(exc), "session_id": sid,
                 "events": session.events[before:]}
 
@@ -555,11 +588,12 @@ def incremental_add(
                 raise StitchError(f"Row {position[0]}, column {position[1]} is already in the map.")
             if not any(abs(position[0] - r) + abs(position[1] - c) == 1 for r, c in session.grid_positions):
                 raise StitchError("Add an image in a neighboring row or column of the current grid first.")
-            session.stitcher.add(img)
+            with compute_lock:
+                session.stitcher.add(img,position=position)
             session.grid_positions.add(position)
             ok, message = True, f"Added image {session.stitcher.count}"
             _save_map(session.sid, session.stitcher.map_img)
-        except StitchError as exc:
+        except Exception as exc:
             ok, message = False, str(exc)
     return {"ok": ok, "message": message,
             "count": session.stitcher.count,
@@ -605,6 +639,87 @@ def _prune_jobs(max_jobs=40):
         job = jobs.pop(job_id, None)
         if job and job.upload_dir:
             shutil.rmtree(job.upload_dir, ignore_errors=True)
+
+
+@app.get('/api/jobs/{job_id}/diagnostics/{filename}')
+def job_diagnostic(job_id: str, filename: str):
+    job = jobs.get(job_id)
+    if job is None or not job.upload_dir or Path(filename).name != filename:
+        return JSONResponse({'error':'Unknown diagnostic'},status_code=404)
+    path = Path(job.upload_dir)/'diagnostics'/filename
+    if not path.is_file(): return JSONResponse({'error':'Unknown diagnostic'},status_code=404)
+    return FileResponse(path)
+
+
+@app.post('/api/pairs/compare')
+def compare_pair(payload: dict = Body(...)):
+    """Read saved inputs, persist independent retries, never mutate mosaic constraints."""
+    from stitcher.contract import prepare_image
+    from stitcher.diagnostics import evaluate_pair
+    from stitcher.matching import build_engine
+    try:
+        selected = payload.get('engines', [])
+        pair = payload.get('pair')
+        if not isinstance(selected,list) or not 1 <= len(selected) <= 8 or not all(isinstance(x,str) for x in selected):
+            raise ValueError('Choose between one and eight models')
+        if not isinstance(pair,list) or len(pair)!=2 or any(type(i) is not int or i<1 for i in pair) or pair[0]==pair[1]:
+            raise ValueError('Choose two distinct input numbers')
+        if payload.get('project_id'):
+            pid = payload['project_id']
+            if not isinstance(pid,str) or not pid.isalnum(): raise ValueError('Invalid project')
+            base = PROJECTS_DIR/pid
+            saved = json.loads((base/'meta.json').read_text())['options']
+            paths = sorted((base/'inputs').glob('in_*'))
+            prefix = f'/api/projects/{pid}/files/diagnostics'
+        else:
+            jid = payload.get('job_id')
+            job = jobs.get(jid)
+            if job is None or not job.done: raise ValueError('Wait for the original run to finish')
+            base = Path(job.upload_dir)
+            saved = dict(job.config)
+            paths = sorted(base.glob('in_*'))
+            prefix = f'/api/jobs/{jid}/diagnostics'
+        if max(pair)>len(paths): raise ValueError('Pair index is out of range')
+        all_options = payload.get('engine_options',{})
+        if not isinstance(all_options,dict): raise ValueError('engine_options must map engine IDs to options')
+        resolved = {id:require_available(id,all_options.get(id),saved) for id in selected}
+        images = [cv2.imread(str(paths[i-1])) for i in pair]
+        if any(img is None for img in images): raise ValueError('Could not load saved input image')
+    except (ValueError,TypeError,KeyError,OSError) as exc:
+        return JSONResponse({'error':str(exc)},status_code=400)
+    results = []
+    with compute_lock:
+        for id in selected:
+            retry_id = 'retry-'+uuid.uuid4().hex[:12]+'-'+id
+            cfg = StitchConfig(engine=id,engine_options=resolved[id],alignment=saved.get('alignment','homography'),
+                ransac_thresh=saved.get('ransac_thresh',3.),weights_dir=str(BASE_DIR/'weights'),
+                diagnostics_dir=str(base/'diagnostics'),diagnostics_url=prefix,grid_positions=saved.get('grid_positions'))
+            try:
+                model = build_engine(cfg.to_dict())
+                names = saved.get('input_names') or [p.name for p in paths]
+                prepared = [prepare_image(model,img,names[i-1]) for img,i in zip(images,pair)]
+                # Unique artifact names keep original diagnostics and previous retries intact.
+                temp = base/'diagnostics'/retry_id
+                cfg.diagnostics_dir = str(temp)
+                cfg.diagnostics_url = prefix+'/'+retry_id
+                _,result,preview = evaluate_pair(model,*prepared,cfg,pair)
+                result['image'] = preview
+                result['retry_id'] = retry_id
+                del model
+            except Exception as exc:
+                result = dict(engine=id,pair=pair,accepted=False,reason=str(exc),rejection=dict(code='model_failed',message=str(exc)))
+            results.append(result)
+    return {'results':results,'notice':'Diagnostic retries only. Rerun the grid to use a different model.'}
+
+
+@app.get('/api/jobs/{job_id}/diagnostics/{retry_id}/{filename}')
+def retry_diagnostic(job_id: str, retry_id: str, filename: str):
+    job = jobs.get(job_id)
+    if job is None or not job.upload_dir or not retry_id.startswith('retry-') or Path(retry_id).name!=retry_id or Path(filename).name!=filename:
+        return JSONResponse({'error':'Unknown diagnostic'},status_code=404)
+    path = Path(job.upload_dir)/'diagnostics'/retry_id/filename
+    if not path.is_file(): return JSONResponse({'error':'Unknown diagnostic'},status_code=404)
+    return FileResponse(path)
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

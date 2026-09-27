@@ -10,14 +10,54 @@ The console prints the overview URL (normally **http://127.0.0.1:8001/**) and
 links to all four tools. The overview page links to pipeline comparison,
 microscope mosaicing, the classic batch/incremental stitcher, and guided stitching.
 
-The launcher uses the existing `.venv`, reuses an already-running Stitch Lab,
-and selects the next free port if another application occupies the requested
-port. Stop a newly started server with **Ctrl+C**. To choose a port explicitly:
+The launcher creates `.venv`, installs all app requirements (including the
+comparison and microscope packages), and sets up XFeat, SuperPoint/SuperGlue,
+EfficientLoFTR and MatchAnything automatically. You need Python with `venv`
+support and Git installed. First setup needs internet access and downloads large
+packages and model checkpoints; allow several GB of disk space. Setup failures
+stop startup with an error; rerun `./start` after fixing the reported problem.
+Successful setup is cached in `.venv` and repeated when the launcher, requirements,
+or setup scripts change, or required model files are missing. Other comparison
+checkpoints download when first selected. Optional MASt3R and PixelStitch research
+integrations still require their documented separate setup.
+
+The launcher reuses an already-running Stitch Lab and selects the next free port
+if another application occupies the requested port. Stop a newly started server
+with **Ctrl+C**. To choose a port explicitly:
 `./start --port 9000`.
 
 A separate grid-aware microscope mosaicer is available at `/microscope`.
 See [MICROSCOPE.md](MICROSCOPE.md) for its CLI, manifest, TIFF exports,
 PixelStitch integration and validation limits.
+
+# Learned models in the classic workspace
+
+`/classic` and `/compare` share one model catalog. Search by model/family, filter
+installed pipelines or methods without SuperPoint, and select model-specific
+settings independently of translation/homography alignment. Research components
+and unimplemented families stay visible with their blocking reasons.
+
+Installed learned alternatives require **Verify model inference** before they can
+start a job. Verification may download upstream weights and runs real inference
+on unequal crops of a microscope tile with a known shift, plus an unrelated
+negative. Results identify the runtime, device and loaded weight hash; installation
+alone is not called readiness. CPU verification does not validate CUDA. CLI:
+
+```bash
+.venv/bin/python verify_engines.py xfeat aliked-lightglue efficientloftr --device cpu
+```
+
+The classic pair inspector offers all/inlier/outlier/confidence previews and
+**Retry this pair with… / Compare selected models**. Retries save separate artifacts
+and leave the accepted mosaic constraints unchanged. Rerun the grid to apply a new
+model. Full bounded correspondences, geometric masks, residuals, options and
+preprocessing are stored beside each job and copied into saved projects. Reloading
+a project restores its inputs, positions and resolved model settings.
+
+See [implementation and validation](validation/classic_ml/README.md) for the
+implemented scope, blocked research families, test commands and measured results.
+The five tested 512 px configurations did not connect the problematic 77-tile scan;
+model integration alone does not guarantee registration success.
 
 # Stitch Lab — pipeline comparison
 
@@ -60,11 +100,12 @@ ALIKED/DISK/SIFT + LightGlue, indoor/outdoor LoFTR, RoMa, Tiny RoMa,
 MASt3R, and the original SuperPoint + SuperGlue baseline. XFeat uses the
 upstream **LighterGlue** checkpoint, not a generic LightGlue checkpoint.
 
-Missing dependencies are disabled with setup instructions. Dependencies being
-present does not guarantee checkpoint availability. Downloads happen on first
-selection, with errors shown per pipeline; other selected pipelines continue.
-Model caches live in `.model_cache/`. Runs are serialized. Matching uses grayscale
-for all adapters; learned dense models retain their internal resolution rules.
+Missing dependencies and unverified learned alternatives are disabled with setup
+instructions and explicit inference verification. Dependencies being present do
+not guarantee checkpoint availability. Downloads happen on verification or model
+use, with errors shown per pipeline; other selected pipelines continue.
+Model caches live in `.model_cache/`. Runs are serialized. Matching preserves native RGB for models that expect it and explicitly derives
+grayscale for grayscale models; learned dense models retain their internal resolution rules.
 The shared keypoint limit applies to sparse extraction and RoMa sampling, not LoFTR.
 Results include panorama downloads, stage timings, pairwise match/inlier counts,
 and JSON reports with settings, seed, device, and core package versions.
@@ -359,7 +400,7 @@ same uploads. Sessions survive page reloads but not server restarts. Each accept
 map version remains in `uploads/guided/` for inspection.
 
 
-One-time setup for Grow a mosaic:
+`./start` sets up Grow a mosaic automatically. To repeat its setup manually:
 
 ```bash
 .venv/bin/python setup_efficientloftr.py

@@ -32,6 +32,9 @@ class MatchAnythingTests(unittest.TestCase):
         del model
         with tempfile.TemporaryDirectory() as temp,patch('comparison.RUNS',Path(temp)),TestClient(app) as client:
             row=next(e for e in client.get('/api/engines').json()['engines'] if e['id']=='matchanything-eloftr')
+            verified = client.post('/api/engines/matchanything-eloftr/verify',json={'version':1,'feature_max_dim':512}).json()
+            self.assertTrue(verified['passed'],verified)
+            row=next(e for e in client.get('/api/engines').json()['engines'] if e['id']=='matchanything-eloftr')
             self.assertTrue(row['available'])
             files=[('files',(f'{i}.png',cv2.imencode('.png',im)[1].tobytes(),'image/png')) for i,im in enumerate(images)]
             r=client.post('/api/comparisons',files=files,data={'options':json.dumps({'engines':['matchanything-eloftr','sift'],'feature_max_dim':512})})

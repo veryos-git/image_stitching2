@@ -72,6 +72,9 @@ class StitchConfig:
     match_threshold: float = 0.2
     sinkhorn_iterations: int = 50
     ratio_test: float = 0.75           # classic matcher ratio test
+    engine_options: dict = field(default_factory=dict)
+    diagnostics_dir: str | None = None
+    diagnostics_url: str = ""
     # Geometry / alignment
     alignment: str = "homography"      # homography | translation
     ransac_thresh: float = 3.0
@@ -97,6 +100,11 @@ class StitchConfig:
     viz: bool = True
 
     def __post_init__(self):
+        from .catalog import resolve_options
+        if self.engine == 'superpoint+superglue': self.engine = 'superglue'
+        self.engine_options = resolve_options(self.engine, self.engine_options, asdict(self))
+        for key, value in self.engine_options.items():
+            if hasattr(self, key): setattr(self, key, value)
         if self.alignment not in ("homography", "translation"):
             raise ValueError("Alignment must be homography or translation")
 
@@ -108,6 +116,11 @@ class StitchConfig:
         if p:
             for k, v in p.items():
                 setattr(self, k, v)
+        from .catalog import CATALOG, resolve_options
+        self.engine_options.update(CATALOG[self.engine]['presets'].get(preset, {}))
+        self.engine_options = resolve_options(self.engine,self.engine_options)
+        for key,value in self.engine_options.items():
+            if hasattr(self,key): setattr(self,key,value)
         return self
 
 
@@ -130,7 +143,13 @@ class PanoramaStitcher:
     def stitch_paths(self, paths):
         bgr, gray = [], []
         for p in paths:
-            b, g = load_image(p)
+            try:
+                b, g = load_image(p)
+            except Exception as exc:
+                self.reporter._send(dict(type='input_error',image=len(bgr)+1,
+                    name=self.config.input_names[len(bgr)] if self.config.input_names else str(p),
+                    reason=str(exc),code='image_load_failed'))
+                raise
             bgr.append(b)
             gray.append(g)
         return self.stitch(bgr, gray)
@@ -146,6 +165,7 @@ class PanoramaStitcher:
 
         rep.plan({
             "engine": cfg.engine,
+            "engine_options": cfg.engine_options,
             "weights": cfg.superglue_weights,
             "alignment": cfg.alignment,
             "input_names": cfg.input_names,
@@ -179,7 +199,8 @@ class PanoramaStitcher:
         for i, g in enumerate(grays):
             rep.stage_progress("features", (i + 1) / len(images),
                                f"Image {i + 1}/{len(images)}")
-            fs = self.engine.extract(g)
+            from .contract import prepare_image
+            fs = prepare_image(self.engine, images[i], cfg.input_names[i] if cfg.input_names else str(i+1))
             if cfg.viz and fs.small_gray is None:
                 fs.small_gray, fs.scale = resize_to_max_dim(g, cfg.feature_max_dim)
             features.append(fs)
@@ -217,8 +238,9 @@ class PanoramaStitcher:
             for i in range(n - 1):
                 rep.stage_progress("match", (i + 1) / (n - 1),
                                    f"Pair {i + 1}↔{i + 2}")
-                mkpts0, mkpts1, conf = self.engine.match(features[i],
-                                                         features[i + 1])
+                from .contract import match_pair
+                matched = match_pair(self.engine,features[i],features[i+1])
+                mkpts0,mkpts1,conf = matched.points0,matched.points1,matched.scores
                 matches.append((mkpts0, mkpts1, conf))
                 if cfg.viz:
                     m0 = mkpts0 * features[i].scale
@@ -347,6 +369,8 @@ class PanoramaStitcher:
             "input_count": input_count,
             "graph": graph,
             "canvas": {"w": W, "h": H},
+            "engine_options": cfg.engine_options,
+            "device": str(getattr(self.engine,"device","cpu")),
             "output": {"w": result.shape[1], "h": result.shape[0]},
             "elapsed": round(time.time() - t0, 3),
             "reference": graph["reference"] if graph else ref + 1,

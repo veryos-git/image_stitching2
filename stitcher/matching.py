@@ -94,6 +94,7 @@ class SuperGlueEngine:
     def extract(self, gray):
         gray_small, scale = resize_to_max_dim(
             gray, self.config.get("feature_max_dim", 1200))
+        scale = np.array([gray_small.shape[1]/gray.shape[1], gray_small.shape[0]/gray.shape[0]], np.float32)
         h, w = gray_small.shape
         tensor = torch.from_numpy(gray_small.astype(np.float32) / 255.0)[None, None].to(self.device)
         out = self.superpoint(tensor)
@@ -155,6 +156,7 @@ class ClassicEngine:
     def extract(self, gray):
         gray_small, scale = resize_to_max_dim(
             gray, self.config.get("feature_max_dim", 1600))
+        scale = np.array([gray_small.shape[1]/gray.shape[1], gray_small.shape[0]/gray.shape[0]], np.float32)
         kpts, desc = self.detector.detectAndCompute(gray_small, None)
         if desc is None or len(kpts) == 0:
             return _empty_features(gray.shape[:2], 0)
@@ -202,7 +204,19 @@ def build_engine(config, device=None):
     except Exception:  # noqa: BLE001
         pass
 
+    from .catalog import resolve_options
+    config = dict(config)
     name = (config.get("engine") or "superglue").lower()
+    if name == 'superpoint+superglue':
+        name = 'superglue'
+    config['engine'] = name
+    resolved = resolve_options(name, config.get('engine_options'), config)
+    config.update({k: v for k, v in resolved.items() if k != 'version'})
+    if device is None:
+        requested = resolved.get('device', 'auto')
+        device = ('cuda' if torch.cuda.is_available() else 'cpu') if requested == 'auto' else requested
+    if device == 'cuda' and not torch.cuda.is_available():
+        raise ValueError('CUDA was requested but is unavailable; select CPU explicitly.')
     if name == "matchanything-eloftr":
         from .matchanything import MatchAnythingEngine
         return MatchAnythingEngine(config, device or ("cuda" if torch.cuda.is_available() else "cpu"))

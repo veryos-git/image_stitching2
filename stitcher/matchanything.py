@@ -42,9 +42,11 @@ class MatchAnythingEngine:
         # The published wrapper square-pads inputs and masks the padded regions.
         batch = {}
         factors = []
-        side = max(*a.small_gray.shape,*b.small_gray.shape)
         for i,fs in enumerate((a,b)):
             h,w = fs.small_gray.shape
+            # Pad each image to its own square: upstream unpadding supports one
+            # padded axis per image, not two axes imposed by a shared pair size.
+            side = max(h,w)
             tensor = torch.zeros((1,1,side,side),device=self.device)
             tensor[0,0,:h,:w] = torch.from_numpy(fs.small_gray).to(self.device,dtype=torch.float32)/255.
             mask = torch.zeros((1,side//8,side//8),device=self.device,dtype=torch.bool)

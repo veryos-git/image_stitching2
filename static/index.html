@@ -88,11 +88,14 @@
         </div>
         <div class="field">
           <label>Feature matcher</label>
-          <select id="engine">
-            <option value="superglue">SuperGlue (AI) — best quality</option>
-            <option value="sift">SIFT — classic, accurate</option>
-            <option value="orb">ORB — fastest (CPU)</option>
-          </select>
+          <input type="search" id="engine-search" placeholder="Search model or family" aria-label="Search matching models" />
+          <label class="check"><input type="checkbox" id="engine-no-superpoint" /> Without SuperPoint</label>
+          <label class="check"><input type="checkbox" id="engine-installed" /> Installed</label>
+          <select id="engine" aria-label="Feature matcher"><option>Loading catalog…</option></select>
+          <p id="engine-status" class="hint" role="status"></p>
+          <a id="engine-source" target="_blank" rel="noopener">Source and terms</a>
+          <button type="button" id="engine-verify">Verify model inference</button>
+          <div id="engine-options"></div>
         </div>
         <div class="field" id="weights-field">
           <label>SuperGlue weights</label>
@@ -221,9 +224,17 @@
     <select id="match-debug-pair"></select>
     <p id="match-debug-reason" role="status"></p>
     <p id="match-debug-names"></p>
+    <label>Show <select id="match-debug-mode"><option value="all">All matches</option><option value="inliers">Geometric inliers</option><option value="outliers">Geometric outliers</option><option value="confidence">Native confidence</option></select></label>
+    <a id="match-debug-artifact" hidden download>Download full correspondences (NPZ)</a>
     <a id="match-debug-full" target="_blank" rel="noopener"><img id="match-debug-image" alt="Two images side by side with lines connecting matched features" /></a>
     <p id="match-debug-legend" class="hint"></p>
-    <p class="hint">Lines show candidate matches, including incorrect ones. Red → green indicates relative matcher confidence, not geometric inlier status. Click the preview to open it at full size.</p>
+    <p class="hint">Confidence is model-specific, not a calibrated probability. Blue lines indicate unavailable confidence. Inlier/outlier filters use the selected geometric estimator.</p>
+    <label for="pair-retry-models">Retry this pair with…</label>
+    <select id="pair-retry-models" multiple size="5"></select>
+    <button type="button" id="pair-retry-current">Retry with current model</button>
+    <button type="button" id="pair-retry">Compare selected models</button>
+    <p class="hint">Retries are separate diagnostics. Rerun the full grid to apply a different model.</p>
+    <div id="pair-retry-results" role="status"></div>
   </dialog>
 
   <dialog id="filename-warning" aria-labelledby="filename-warning-title">
@@ -232,6 +243,7 @@
     <p>For images without grid positions, use the separate <a href="/compare">Pipeline comparison tool</a> and select Unordered mode.</p>
     <button class="btn" id="filename-warning-close">Adjust filename template</button>
   </dialog>
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/engine-controls.js"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

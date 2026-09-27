@@ -22,8 +22,19 @@ class AlternativeEngine:
             repo = ROOT / 'vendor' / 'accelerated_features'
             if not repo.exists():
                 raise RuntimeError('Install XFeat: git clone https://github.com/verlab/accelerated_features vendor/accelerated_features')
+            import subprocess
+            from .catalog import CATALOG
+            revision = subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()
+            if revision != CATALOG['xfeat']['source_revision']:
+                raise RuntimeError('XFeat source revision differs from the validated pin. Run setup_xfeat.py.')
             self.model = torch.hub.load(str(repo), 'XFeat', source='local', pretrained=False, top_k=n)
+            self.model.dev = torch.device(device)
+            self.model.net.to(device)
             self.model.net.load_state_dict(torch.load(repo / 'weights/xfeat.pt', map_location=device, weights_only=True))
+            if self.name == 'xfeat-lighterglue':
+                from vendor.accelerated_features.modules.lighterglue import LighterGlue
+                self.matcher = LighterGlue().eval().to(device)
+                self.matcher.dev = torch.device(device)
         elif self.name.endswith('-lightglue'):
             from lightglue import LightGlue, DISK, ALIKED, SIFT
             kind = self.name.split('-')[0]
@@ -46,10 +57,14 @@ class AlternativeEngine:
             self.model = AsymmetricMASt3R.from_pretrained('naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric').eval().to(device)
 
     @torch.inference_mode()
-    def extract(self, gray):
-        small, scale = resize_to_max_dim(gray, self.config['feature_max_dim'])
-        fs = FeatureSet(np.empty((0, 2), np.float32), np.empty((0, 0)), np.empty(0), gray.shape, scale, small)
-        tensor = torch.from_numpy(small.copy()).float().to(self.device)[None, None] / 255
+    def extract(self, image):
+        small, _ = resize_to_max_dim(image, self.config['feature_max_dim'])
+        gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY) if small.ndim == 3 else small
+        scale = np.array([small.shape[1]/image.shape[1], small.shape[0]/image.shape[0]], np.float32)
+        fs = FeatureSet(np.empty((0, 2), np.float32), np.empty((0, 0)), np.empty(0), image.shape[:2], scale, gray)
+        fs.small_rgb = small if small.ndim == 3 else cv2.cvtColor(small, cv2.COLOR_GRAY2RGB)
+        tensor = torch.from_numpy(small.copy()).float().to(self.device)
+        tensor = (tensor.permute(2, 0, 1)[None] if small.ndim == 3 else tensor[None, None]) / 255
         fs.tensor = tensor
         fs.payload = None
         if self.name.endswith('-lightglue'):
@@ -63,7 +78,7 @@ class AlternativeEngine:
 
     @torch.inference_mode()
     def match(self, a, b):
-        n = self.config['max_keypoints']
+        n = self.config.get('dense_sample_budget', self.config.get('max_keypoints',2048))
         if self.name.endswith('-lightglue'):
             out = self.matcher({'image0': a.payload, 'image1': b.payload})
             idx = out['matches'][0].cpu().numpy()
@@ -72,13 +87,19 @@ class AlternativeEngine:
             return np.empty((0, 2)), np.empty((0, 2)), np.empty(0)
         if self.name == 'xfeat':
             i, j = self.model.match(a.payload['descriptors'], b.payload['descriptors'])
-            return a.keypoints[i.cpu().numpy()], b.keypoints[j.cpu().numpy()], np.ones(len(i))
+            return a.keypoints[i.cpu().numpy()], b.keypoints[j.cpu().numpy()], None
         if self.name == 'xfeat-lighterglue':
-            x, y, _ = self.model.match_lighterglue(a.payload, b.payload)
-            return x / a.scale, y / b.scale, np.ones(len(x))
+            data = {}
+            for i, f in enumerate((a,b)):
+                for field in ('keypoints','descriptors'):
+                    data[field+str(i)] = f.payload[field][None]
+                data['image_size'+str(i)] = torch.tensor(f.payload['image_size'],device=self.device)[None]
+            out = self.matcher(data)
+            idx = out['matches'][0].cpu().numpy()
+            return a.keypoints[idx[:,0]], b.keypoints[idx[:,1]], out['scores'][0].cpu().numpy()
         if self.name == 'xfeat-star':
             x, y = self.model.match_xfeat_star(a.tensor, b.tensor, top_k=n)
-            return x / a.scale, y / b.scale, np.ones(len(x))
+            return x / a.scale, y / b.scale, None
         if self.name.startswith('loftr'):
             # LoFTR requires spatial dimensions divisible by eight.
             tensors, factors = [], []
@@ -92,7 +113,7 @@ class AlternativeEngine:
         if self.name in ('roma', 'tiny-roma'):
             from PIL import Image
             kwargs = {'device': self.device} if self.name == 'roma' else {}
-            warp, certainty = self.model.match(Image.fromarray(a.small_gray).convert('RGB'), Image.fromarray(b.small_gray).convert('RGB'), **kwargs)
+            warp, certainty = self.model.match(Image.fromarray(a.small_rgb), Image.fromarray(b.small_rgb), **kwargs)
             matches, scores = self.model.sample(warp, certainty, num=n)
             x, y = self.model.to_pixel_coordinates(matches, *a.shape, *b.shape)
             return x.cpu().numpy(), y.cpu().numpy(), scores.cpu().numpy()
@@ -110,5 +131,5 @@ class AlternativeEngine:
                 factors.append(np.array([w / ww, h / hh]))
             out = inference([tuple(views)], self.model, self.device, batch_size=1, verbose=False)
             x, y = fast_reciprocal_NNs(out['pred1']['desc'][0], out['pred2']['desc'][0], subsample_or_initxy1=8, device=self.device, dist='dot', block_size=8192)
-            return x * factors[0], y * factors[1], np.ones(len(x))
+            return x * factors[0], y * factors[1], None
         raise ValueError(self.name)
