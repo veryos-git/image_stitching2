@@ -27,7 +27,7 @@ import uvicorn
 from fastapi import (Body, FastAPI, File, Form, UploadFile, WebSocket,
                      WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from stitcher import (PanoramaStitcher, IncrementalStitcher, StitchConfig,
@@ -126,6 +126,11 @@ def _run_job(job_id: str, paths, config_dict):
 
 @app.get("/")
 def index():
+    return RedirectResponse("/classic", status_code=307)
+
+
+@app.get("/overview")
+def overview():
     return FileResponse(STATIC_DIR / "overview.html")
 
 
@@ -141,16 +146,19 @@ def classic_page():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "app": "stitch-lab", "overview": "/", "jobs": len(jobs),
+    return {"status": "ok", "app": "stitch-lab", "overview": "/overview", "home": "/classic", "jobs": len(jobs),
             "incremental": len(incremental_sessions)}
 
 
 def _stitch_config(engine, weights, max_keypoints, match_threshold,
                    feature_max_dim, sinkhorn_iterations, ransac_thresh,
                    reference, refine, blend_levels, exposure, crop, viz=True,
-                   min_extend_ratio=0.0, min_extend_px=0.0, alignment="homography", engine_options=None):
+                   min_extend_ratio=0.0, min_extend_px=0.0, alignment="translation", engine_options=None,
+                   input_max_width=1080, preprocessing="none"):
     return StitchConfig(
         engine=engine,
+        input_max_width=input_max_width,
+        preprocessing=preprocessing,
         engine_options=engine_options or {},
         alignment=alignment,
         superglue_weights=weights,
@@ -195,15 +203,18 @@ def grid_positions(payload: dict = Body(...)):
 async def stitch(
     files: list[UploadFile] = File(...),
     filename_template: str = Form(DEFAULT_TEMPLATE),
-    engine: str = Form("superglue"),
+    engine: str = Form("disk-lightglue"),
     engine_options: str = Form("{}"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
     feature_max_dim: int = Form(1024),
     sinkhorn_iterations: int = Form(50),
-    alignment: Literal["homography", "translation"] = Form("homography"),
-    ransac_thresh: float = Form(3.0),
+    input_max_width: int = Form(1080, ge=0, le=16384),
+    preprocessing: Literal["none", "sobel"] = Form("none"),
+    alignment: Literal["homography", "translation"] = Form("translation"),
+    ransac_thresh: float = Form(50.0),
+    stitching_mode: Literal["grid", "rows_first"] = Form("rows_first"),
     reference: str = Form("middle"),
     refine: bool = Form(False),
     blend_levels: int = Form(6),
@@ -241,10 +252,12 @@ async def stitch(
 
     cfg = _stitch_config(engine, weights, max_keypoints, match_threshold,
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
-                         reference, refine, blend_levels, exposure, crop, alignment=alignment, engine_options=resolved)
+                         reference, refine, blend_levels, exposure, crop, alignment=alignment, engine_options=resolved,
+                         input_max_width=input_max_width, preprocessing=preprocessing)
     cfg.diagnostics_dir = str(job_dir/'diagnostics')
     cfg.diagnostics_url = f'/api/jobs/{job_id}/diagnostics'
     cfg.pairing = "grid"
+    cfg.stitching_mode = stitching_mode
     cfg.grid_positions = positions
     cfg.input_names = [f.filename for f in files]
     cfg.disconnected = "reject"
@@ -514,15 +527,17 @@ def _save_map(sid, map_img):
 def incremental_start(
     file: UploadFile = File(...),
     filename_template: str = Form(DEFAULT_TEMPLATE),
-    engine: str = Form("superglue"),
+    engine: str = Form("disk-lightglue"),
     engine_options: str = Form("{}"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
     feature_max_dim: int = Form(1024),
     sinkhorn_iterations: int = Form(50),
-    alignment: Literal["homography", "translation"] = Form("homography"),
-    ransac_thresh: float = Form(3.0),
+    input_max_width: int = Form(1080, ge=0, le=16384),
+    preprocessing: Literal["none", "sobel"] = Form("none"),
+    alignment: Literal["homography", "translation"] = Form("translation"),
+    ransac_thresh: float = Form(50.0),
     refine: bool = Form(False),
     blend_levels: int = Form(6),
     exposure: bool = Form(True),
@@ -542,7 +557,8 @@ def incremental_start(
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
                          "middle", refine, blend_levels, exposure, False,
                          min_extend_ratio=min_extend_ratio,
-                         min_extend_px=min_extend_px, alignment=alignment, engine_options=resolved)
+                         min_extend_px=min_extend_px, alignment=alignment, engine_options=resolved,
+                         input_max_width=input_max_width, preprocessing=preprocessing)
     stitcher = IncrementalStitcher(
         cfg, download_url=f"/api/incremental/{sid}/map.jpg")
     session = IncrementalSession(sid, stitcher)
@@ -685,6 +701,9 @@ def compare_pair(payload: dict = Body(...)):
         resolved = {id:require_available(id,all_options.get(id),saved) for id in selected}
         images = [cv2.imread(str(paths[i-1])) for i in pair]
         if any(img is None for img in images): raise ValueError('Could not load saved input image')
+        from stitcher.preprocessing import preprocess_image
+        images = [preprocess_image(img, saved.get('input_max_width', 0), saved.get('preprocessing', 'none'))
+                  for img in images]
     except (ValueError,TypeError,KeyError,OSError) as exc:
         return JSONResponse({'error':str(exc)},status_code=400)
     results = []

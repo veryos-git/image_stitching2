@@ -90,6 +90,27 @@ def feather_mask(mask, power=1.0):
     return np.maximum(wgt, 1e-4) * m
 
 
+def feather_blend(warped_images, masks, gains=None, power=1.0, progress=None):
+    """Normalize distance-to-edge weights, excluding uncovered pixels entirely.
+
+    Pad masks so images touching the canvas edge feather just like interior
+    images. Keep coverage separate: even genuinely black pixels are valid.
+    """
+    if gains is None:
+        gains = np.ones(len(warped_images), np.float32)
+    total = np.zeros(masks[0].shape, np.float32)
+    accum = np.zeros(warped_images[0].shape, np.float32)
+    for i, (img, mask, gain) in enumerate(zip(warped_images, masks, gains)):
+        padded = cv2.copyMakeBorder(mask, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+        weight = feather_mask(padded, power)[1:-1, 1:-1]
+        accum += img.astype(np.float32) * (weight * gain)[..., None]
+        total += weight
+        if progress:
+            progress((i + 1) / len(masks), f"Feathered image {i + 1}/{len(masks)}")
+    accum /= np.maximum(total, 1e-8)[..., None]
+    return np.clip(np.rint(accum), 0, 255).astype(np.uint8)
+
+
 # --------------------------------------------------------------------------- #
 # Exposure compensation
 # --------------------------------------------------------------------------- #

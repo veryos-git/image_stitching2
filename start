@@ -77,7 +77,7 @@ def banner(host, port, existing=False):
         browser_host = f'[{browser_host}]'
     base = f'http://{browser_host}:{port}'
     print('\n  Stitch Lab' + (' — already running' if existing else ''), flush=True)
-    print(f'\n  Overview:             {base}/\n'
+    print(f'\n  Overview:             {base}/overview\n'
           f'  Pipeline comparison:  {base}/compare\n'
           f'  Microscope mosaic:    {base}/microscope\n'
           f'  Classic stitcher:     {base}/classic\n'
@@ -99,7 +99,7 @@ def main():
         try:
             with opener.open(f'http://{url_host}:{port}/api/health', timeout=.4) as response:
                 health = json.load(response)
-            if health.get('app') == 'stitch-lab' and health.get('overview') == '/':
+            if health.get('app') == 'stitch-lab' and health.get('overview') in ('/', '/overview'):
                 banner(args.host, port, existing=True)
                 return
         except (OSError, ValueError):

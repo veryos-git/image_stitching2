@@ -29,8 +29,36 @@ class ClassicModelsAPITests(unittest.TestCase):
             self.assertEqual(r.status_code,400,r.text)
             self.assertEqual(len(server.jobs),count)
 
+    def test_partial_rows_result_download_save_and_reload(self):
+        blank = cv2.imencode('.png', np.zeros((100, 100, 3), np.uint8))[1].tobytes()
+        files = self.files + [('files', ('tile_r01_c00.png', blank, 'image/png'))]
+        response = self.client.post('/api/stitch', files=files,
+                                    data={'engine': 'sift', 'stitching_mode': 'rows_first'})
+        self.assertEqual(response.status_code, 200, response.text)
+        job_id = response.json()['job_id']
+        job = server.jobs[job_id]
+        deadline = time.monotonic() + 30
+        while not job.done and time.monotonic() < deadline:
+            time.sleep(.05)
+        self.assertTrue(job.done)
+        self.assertIsNotNone(job.result_path, [e for e in job.events if e['type'] == 'error'])
+        self.assertEqual(self.client.get(f'/api/jobs/{job_id}/result').status_code, 200)
+        result = next(e for e in job.events if e['type'] == 'result')
+        self.assertTrue(result['meta']['partial'])
+        self.assertEqual(result['meta']['included_rows'], [0])
+        self.assertEqual(result['meta']['num_images'], 2)
+        saved = self.client.post('/api/projects', json={'job_id': job_id, 'name': 'Partial rows'}).json()
+        project = self.client.get('/api/projects/' + saved['id']).json()
+        loaded = next(e for e in project['events'] if e['type'] == 'result')
+        self.assertTrue(loaded['meta']['partial'])
+        self.assertEqual(self.client.get(loaded['image']).status_code, 200)
+        rows = [e for e in project['events'] if e['type'] == 'image' and 'completed_row' in e.get('meta', {})]
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(self.client.get(row['image']).status_code, 200)
+
     def test_grid_artifacts_retry_save_reload_and_legacy_project(self):
-        r=self.client.post('/api/stitch',files=self.files,data={'engine':'sift','alignment':'translation',
+        r=self.client.post('/api/stitch',files=self.files,data={'engine':'sift','alignment':'translation','stitching_mode':'grid',
             'engine_options':json.dumps({'version':1,'max_keypoints':1500,'ratio_test':.7})})
         self.assertEqual(r.status_code,200,r.text)
         id=r.json()['job_id']; job=server.jobs[id]

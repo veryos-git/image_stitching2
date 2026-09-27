@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI Panorama Stitcher · SuperGlue</title>
+  <title>AI Panorama Stitcher</title>
   <link rel="stylesheet" href="/static/style.css?v=9" />
 </head>
 <body>
   <header>
-    <a href="/" style="color:inherit">← All tools</a>
+    <a href="/overview" style="color:inherit">← All tools</a>
     <h1>AI <span class="ai">Panorama</span> Stitcher</h1>
-    <p class="subtitle">SuperPoint + SuperGlue feature matching · live markers</p>
+    <p class="subtitle">Feature matching · live markers</p>
     <span class="badge" id="conn-badge">● idle</span>
   </header>
 
@@ -78,6 +78,19 @@
       <div class="card">
         <h2>3 · Pipeline options</h2>
         <div class="field">
+          <label for="input-max-width">Input width (px; 0 = original)</label>
+          <input type="number" id="input-max-width" value="1080" min="0" max="16384" step="1" />
+          <p class="muted">Downscale each image before stitching. Keeps aspect ratio and never enlarges smaller images. The panorama uses this reduced resolution.</p>
+        </div>
+        <div class="field">
+          <label for="preprocessing">Input processing</label>
+          <select id="preprocessing">
+            <option value="none">Original colors</option>
+            <option value="sobel">Sobel edges</option>
+          </select>
+          <p class="muted">Sobel converts resized inputs to edge images before matching and blending. The result is an edge-image panorama. Applies to batch and incremental stitching.</p>
+        </div>
+        <div class="field">
           <label>Speed / quality preset</label>
           <select id="preset">
             <option value="fast">⚡ Fast — heavy downscale (~4× faster)</option>
@@ -121,7 +134,7 @@
           </div>
           <div class="field">
             <label>RANSAC threshold (px)</label>
-            <input type="number" id="ransac-thresh" value="3.0" min="0.5" max="20" step="0.5" />
+            <input type="number" id="ransac-thresh" value="50" min="0.5" max="100" step="0.5" />
           </div>
         </div>
         <div class="row">
@@ -141,9 +154,17 @@
           <label for="alignment">Alignment</label>
           <select id="alignment">
             <option value="homography">Perspective (homography)</option>
-            <option value="translation">Translation only (x/y shifts)</option>
+            <option value="translation" selected>Translation only (x/y shifts)</option>
           </select>
           <p class="muted">Translation requires the same scale and orientation in all images.</p>
+        </div>
+        <div class="field">
+          <label for="stitching-mode">Batch stitching mode</label>
+          <select id="stitching-mode">
+            <option value="grid">Grid neighbors (single pass)</option>
+            <option value="rows_first" selected>Rows first, then combine</option>
+          </select>
+          <p class="muted">Two steps: stitch tiles within each row, then stitch the row images together. Uses filename row and column positions; batch mode only.</p>
         </div>
         <label class="check"><input type="checkbox" id="refine" /> Photometric (ECC) refinement</label>
         <label class="check"><input type="checkbox" id="exposure" checked /> Exposure compensation</label>
@@ -197,12 +218,18 @@
 
       <div class="card" id="result-card" hidden>
         <h2>6 · Result</h2>
+        <p id="result-notice" role="status" hidden></p>
         <div class="viewer" id="result-viewer"></div>
         <div class="stat-grid" id="stats"></div>
         <div class="result-actions">
           <a class="btn" id="download" download="panorama.jpg" hidden>⬇ Download JPEG</a>
           <a class="btn" id="download-png" download="panorama.png" hidden>⬇ Download PNG</a>
         </div>
+      </div>
+      <div class="card" id="completed-rows-card" hidden>
+        <h2>Completed rows</h2>
+        <p class="muted">Feathered row images remain available even if other rows cannot be aligned.</p>
+        <div class="result-actions" id="completed-rows"></div>
       </div>
     </div>
   </div>

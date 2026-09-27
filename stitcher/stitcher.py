@@ -62,6 +62,8 @@ PRESETS = {
 
 @dataclass
 class StitchConfig:
+    input_max_width: int = 0          # 0 preserves original size
+    preprocessing: str = "none"      # none | sobel
     # Engine / features
     engine: str = "superglue"          # superglue | sift | orb
     superglue_weights: str = "outdoor"  # indoor | outdoor
@@ -79,6 +81,7 @@ class StitchConfig:
     alignment: str = "homography"      # homography | translation
     ransac_thresh: float = 3.0
     pairing: str = "sequential"       # sequential | unordered | grid
+    stitching_mode: str = "grid"      # grid | rows_first
     grid_positions: list | None = None # (row, column) for each input image
     input_names: list | None = None
     disconnected: str = "largest"     # largest | reject
@@ -100,6 +103,10 @@ class StitchConfig:
     viz: bool = True
 
     def __post_init__(self):
+        if not isinstance(self.input_max_width, int) or not 0 <= self.input_max_width <= 16384:
+            raise ValueError("Input width must be between 0 and 16384 pixels")
+        if self.preprocessing not in ("none", "sobel"):
+            raise ValueError("Preprocessing must be none or sobel")
         from .catalog import resolve_options
         if self.engine == 'superpoint+superglue': self.engine = 'superglue'
         self.engine_options = resolve_options(self.engine, self.engine_options, asdict(self))
@@ -107,6 +114,8 @@ class StitchConfig:
             if hasattr(self, key): setattr(self, key, value)
         if self.alignment not in ("homography", "translation"):
             raise ValueError("Alignment must be homography or translation")
+        if self.stitching_mode not in ("grid", "rows_first"):
+            raise ValueError("Stitching mode must be grid or rows_first")
 
     def to_dict(self):
         return asdict(self)
@@ -128,6 +137,7 @@ class StitchConfig:
 class StitchResult:
     panorama: np.ndarray
     stats: dict = field(default_factory=dict)
+    coverage: np.ndarray | None = None
 
 
 class PanoramaStitcher:
@@ -145,6 +155,10 @@ class PanoramaStitcher:
         for p in paths:
             try:
                 b, g = load_image(p)
+                if self.config.input_max_width or self.config.preprocessing != "none":
+                    from .preprocessing import preprocess_image
+                    b = preprocess_image(b, self.config.input_max_width, self.config.preprocessing)
+                    g = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)
             except Exception as exc:
                 self.reporter._send(dict(type='input_error',image=len(bgr)+1,
                     name=self.config.input_names[len(bgr)] if self.config.input_names else str(p),
@@ -152,14 +166,26 @@ class PanoramaStitcher:
                 raise
             bgr.append(b)
             gray.append(g)
-        return self.stitch(bgr, gray)
+        return self.stitch(bgr, gray, _preprocessed=True)
 
-    def stitch(self, images, grays=None):
+    def stitch(self, images, grays=None, input_masks=None, feather=False, _preprocessed=False):
         """Stitch a list of BGR ``images`` (optionally with grayscale copies).
 
         Returns a :class:`StitchResult`.
         """
         cfg = self.config
+        if grays is not None and len(grays) != len(images):
+            raise StitchError("images/gray length mismatch")
+        if not _preprocessed and (cfg.input_max_width or cfg.preprocessing != "none"):
+            from .preprocessing import preprocess_image
+            images = [preprocess_image(img, cfg.input_max_width, cfg.preprocessing) for img in images]
+            grays = None
+            if input_masks is not None:
+                input_masks = [cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
+                               for mask, img in zip(input_masks, images)]
+        if cfg.stitching_mode == "rows_first":
+            from .rows import stitch_rows
+            return stitch_rows(self, images, grays)
         rep = self.reporter
         t0 = time.time()
 
@@ -192,7 +218,8 @@ class PanoramaStitcher:
         # ---- features ---------------------------------------------------- #
         rep.stage_start("features", f"Extracting features with "
                                     f"'{cfg.engine}'…")
-        self.engine = build_engine(cfg.to_dict())
+        if self.engine is None:
+            self.engine = build_engine(cfg.to_dict())
         rep.log(f"Engine: {self.engine.name}", "info", "features")
 
         features = []
@@ -229,6 +256,8 @@ class PanoramaStitcher:
             from .unordered import align_unordered
             Hs, included, original_ref, graph = align_unordered(self.engine, features, cfg, rep)
             images = [images[i] for i in included]
+            if input_masks is not None:
+                input_masks = [input_masks[i] for i in included]
             sizes = [sizes[i] for i in included]
             n = len(images)
             ref = included.index(original_ref)
@@ -302,7 +331,7 @@ class PanoramaStitcher:
             elapsed = time.perf_counter() - blend_started
             rep.stage_progress("blend", fraction, f"{message} · {elapsed:.1f}s elapsed")
 
-        rep.stage_start("blend", "Warping & multi-band blending…")
+        rep.stage_start("blend", "Warping & feather blending…" if feather else "Warping & multi-band blending…")
         blend_progress(0.0, "Computing canvas")
         offset, W, H, scale = blender.compute_canvas(
             Hs, sizes, max_output_dim=cfg.max_output_dim)
@@ -316,6 +345,9 @@ class PanoramaStitcher:
             blend_progress(0.05 + 0.3 * i / n, f"Warping image {i + 1}/{n}")
             M = blender.final_transform(Hs[i], offset, scale)
             w_img, w_mask = blender.warp_image(img, M, W, H)
+            if input_masks is not None:
+                w_mask = cv2.warpPerspective(input_masks[i], M, (W, H),
+                                             flags=cv2.INTER_NEAREST)
             warped.append(w_img)
             masks.append(w_mask)
             blend_progress(0.05 + 0.3 * (i + 1) / n, f"Warped image {i + 1}/{n}")
@@ -327,10 +359,16 @@ class PanoramaStitcher:
                 warped, masks,
                 progress=lambda f, msg: blend_progress(0.35 + 0.2 * f, msg))
 
-        blend_progress(0.55, f"Multi-band blending ({cfg.blend_levels} levels)")
-        blended = blender.multi_band_blend(
-            warped, masks, gains, cfg.blend_levels,
-            progress=lambda f, msg: blend_progress(0.55 + 0.4 * f, msg))
+        if feather:
+            blend_progress(0.55, "Feather blending overlaps")
+            blended = blender.feather_blend(
+                warped, masks, gains, cfg.feather_power,
+                progress=lambda f, msg: blend_progress(0.55 + 0.4 * f, msg))
+        else:
+            blend_progress(0.55, f"Multi-band blending ({cfg.blend_levels} levels)")
+            blended = blender.multi_band_blend(
+                warped, masks, gains, cfg.blend_levels,
+                progress=lambda f, msg: blend_progress(0.55 + 0.4 * f, msg))
         del warped
         blend_progress(0.95, "Preparing preview and coverage mask")
 
@@ -356,6 +394,7 @@ class PanoramaStitcher:
         if cfg.crop:
             bbox = blender.find_crop_bbox(weight_sum, margin=cfg.crop_margin)
             result = blender.crop(blended, bbox)
+            weight_sum = blender.crop(weight_sum, bbox)
             rep.stage_done("crop", f"Cropped to {bbox[2]}×{bbox[3]} px",
                            {"bbox": list(bbox)})
         else:
@@ -363,6 +402,8 @@ class PanoramaStitcher:
             rep.stage_done("crop", "Skipped", {"bbox": [0, 0, W, H]})
 
         stats = {
+            "input_max_width": cfg.input_max_width,
+            "preprocessing": cfg.preprocessing,
             "engine": self.engine.name,
             "alignment": cfg.alignment,
             "num_images": n,
@@ -377,7 +418,7 @@ class PanoramaStitcher:
         }
         rep.result(encode_b64(result, ".jpg", 95), result.shape[1],
                    result.shape[0], stats)
-        return StitchResult(result, stats)
+        return StitchResult(result, stats, (weight_sum > 0).astype(np.uint8) * 255)
 
     # ------------------------------------------------------------------ #
     @staticmethod

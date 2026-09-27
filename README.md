@@ -6,8 +6,8 @@ From this project folder, run:
 ./start
 ```
 
-The console prints the overview URL (normally **http://127.0.0.1:8001/**) and
-links to all four tools. The overview page links to pipeline comparison,
+Open **http://127.0.0.1:8001/** to go directly to the classic workspace.
+The console also prints the overview URL (`/overview`) and links to all four tools. The overview page links to pipeline comparison,
 microscope mosaicing, the classic batch/incremental stitcher, and guided stitching.
 
 The launcher creates `.venv`, installs all app requirements (including the
@@ -31,6 +31,19 @@ See [MICROSCOPE.md](MICROSCOPE.md) for its CLI, manifest, TIFF exports,
 PixelStitch integration and validation limits.
 
 # Learned models in the classic workspace
+
+Opening `/` redirects to `/classic`; all tools remain listed at `/overview`.
+Classic defaults to **DISK + LightGlue**, **translation only (XY)**,
+**50 px RANSAC** (maximum **100 px**), and **Rows first, then combine**.
+
+**Input width** defaults to **1080 pixels wide**. Images wider than this are
+downscaled before matching and blending, preserving aspect ratio; smaller images
+are never enlarged. Enter another width or **0** to retain original resolution.
+**Input processing → Sobel edges** optionally replaces each resized image with
+its Sobel gradient magnitude (horizontal and vertical edges). The output is an
+edge-image panorama. Preprocessing runs once on each original tile, before either
+stitching stage, and also applies to incremental inputs. Settings are saved with
+projects; incremental settings stay fixed until the map is reset.
 
 `/classic` and `/compare` share one model catalog. Search by model/family, filter
 installed pipelines or methods without SuperPoint, and select model-specific
@@ -449,7 +462,7 @@ configuration, grayscale resizing, square padding with validity masks, and retur
 matches in original image coordinates. No model downloads occur during comparison.
 This option does not include the separate MatchAnything RoMa variant.
 
-The classic workspace and pipeline comparison both offer **Alignment → Translation only (x/y shifts)**. This works for sequential and unordered batch stitching and for the classic incremental map. Unsupported overlaps fail without falling back to perspective alignment. The default remains perspective (homography). From the CLI, use `python run_stitcher.py --input img1.jpg img2.jpg --engine sift --alignment translation -o panorama.jpg`.
+The classic workspace and pipeline comparison both offer **Alignment → Translation only (x/y shifts)**. This works for sequential and unordered batch stitching and for the classic incremental map. Unsupported overlaps fail without falling back to perspective alignment. The classic workspace and its batch/incremental APIs default to translation only; perspective (homography) remains selectable. Pipeline comparison and the CLI keep their existing defaults. From the CLI, use `python run_stitcher.py --input img1.jpg img2.jpg --engine sift --alignment translation -o panorama.jpg`.
 
 In the **classic workspace**, tile filenames must include their logical row and
 column. The default template `prefix_{rNN}_{cNN}.png` recognizes names such as
@@ -465,6 +478,20 @@ the template is fixed until that map is reset. The classic API also validates
 names (`filename_template` on `/api/stitch` and `/api/incremental/start`).
 For random images without row/column names, use the separate **Pipeline comparison**
 workspace at `/compare` and select **Unordered · find overlaps**.
+
+For two-stage batch stitching, select **Batch stitching mode → Rows first, then
+combine** (`stitching_mode=rows_first` on `/api/stitch`). Tiles are sorted by
+column within each row and stitched into intermediate row images. Both stages
+use mask-aware feather blending and the selected alignment and matcher. After
+processing all rows, the second stage searches the completed rows for reliable
+overlaps and combines the largest connected group. A failed row does not stop
+the remaining rows. If none of the completed rows connect, the largest completed
+row becomes the result. Partial results list omitted rows and count only included
+tiles. Every completed row has its own download, retained when saving a project.
+The progress timeline shows each completed row, and the mode is saved with
+projects. Adjacent tiles and row images must overlap. Intermediate rows retain their original pixel scale
+and coverage; the output size limit and auto-crop apply to the final panorama.
+The default batch mode is **Rows first, then combine**; **Grid neighbors (single pass)** remains selectable.
 
 To debug a classic grid run, click a tile in the floating grid or choose
 **Inspect overlaps** below the upload area. Orange borders indicate rejected

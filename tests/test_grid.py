@@ -59,7 +59,7 @@ class GridTests(unittest.TestCase):
             self.assertEqual(invalid.status_code, 400)
             factory.assert_not_called()
             response = client.post('/api/incremental/start', files=upload('tile_r00_c00.png'),
-                                   data={'alignment':'translation'})
+                                   data={'alignment':'translation', 'engine':'sift'})
             self.assertTrue(response.json()['ok'], response.text)
             sid = response.json()['session_id']
             self.assertEqual(factory.call_args.args[0].alignment, 'translation')
@@ -85,7 +85,8 @@ class GridTests(unittest.TestCase):
                      ('files', ('scan_row0_col0.tif', image, 'image/png'))]
             self.assertEqual(client.post('/api/stitch', files=files).status_code, 400)
             response = client.post('/api/stitch', files=files,
-                                   data={'filename_template':'scan_row{row}_col{col}.tif', 'alignment':'translation'})
+                                   data={'filename_template':'scan_row{row}_col{col}.tif', 'alignment':'translation',
+                                         'engine':'sift', 'stitching_mode':'grid'})
             self.assertEqual(response.status_code, 200, response.text)
             config = jobs[response.json()['job_id']].config
             self.assertEqual(config['grid_positions'], [(0, 1), (0, 0)])

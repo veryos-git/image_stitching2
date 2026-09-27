@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory() as tmp,sync_playwright() as p:
     page.set_input_files('#file-input',paths)
     page.wait_for_function('!document.getElementById("stitch-btn").disabled')
     page.select_option('#alignment','translation')
+    page.select_option('#stitching-mode','grid')
     page.click('#stitch-btn')
     page.wait_for_selector('#result-card:visible',timeout=60000)
     page.click('#match-debug-open')

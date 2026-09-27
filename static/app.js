@@ -18,6 +18,7 @@ const state = {
   projectId: null,
   running: false,
   resultUrl: null,
+  partialResult: false,
   incrSession: null,   // incremental session id
 };
 
@@ -29,6 +30,8 @@ $("alignment").addEventListener("change", () => {
   $("refine").disabled = translation;
   if (translation) $("refine").checked = false;
 });
+
+$("alignment").dispatchEvent(new Event("change"));
 
 /* ============================ utilities ============================ */
 function log(msg, level = "") {
@@ -122,6 +125,10 @@ function resetUI() {
   state.stages = [];
   showViewer(null);
   $("result-card").hidden = true;
+  $("result-notice").hidden = true;
+  $("completed-rows-card").hidden = true;
+  $("completed-rows").replaceChildren();
+  state.partialResult = false;
   $("download").hidden = true;
   $("download-png").hidden = true;
   $("log").innerHTML = "";
@@ -206,7 +213,7 @@ async function validateBatchNames(popup = false) {
         .sort((a, b) => a.position[0] - b.position[0] || a.position[1] - b.position[1]);
       state.images = sorted.map(item => item.file);
       state.positions = sorted.map(item => item.position);
-      $("grid-status").textContent = state.images.length ? `Detected positions for ${state.images.length} images. Matching uses horizontal and vertical grid neighbors.` : "";
+      $("grid-status").textContent = state.images.length ? `Detected positions for ${state.images.length} images. Ready for grid or rows-first batch stitching.` : "";
     } else {
       $("grid-status").textContent = result.errors.slice(0, 8).join(" ");
       if (popup) showNameWarning(result.errors.slice(0, 8).join("\n") + "\n\n" + result.help);
@@ -542,6 +549,12 @@ function showResult(ev) {
   const stats = $("stats");
   stats.innerHTML = "";
   const m = ev.meta || {};
+  state.partialResult = !!m.partial;
+  const notice = $("result-notice");
+  notice.hidden = !m.partial;
+  notice.textContent = m.partial
+    ? `Partial result: ${m.num_rows} of ${m.completed_rows.length + m.failed_rows.length} rows, ${m.num_images} of ${m.input_count} tiles. ${(m.warnings || []).join(" ")}`
+    : "";
   const items = [
     ["Engine", m.engine || "—"],
     ["Images", m.num_images || "—"],
@@ -567,6 +580,8 @@ function showResult(ev) {
 /* ============================ stitch ============================ */
 function currentOptions() {
   return {
+    input_max_width: $("input-max-width").value,
+    preprocessing: $("preprocessing").value,
     filename_template: $("filename-template").value,
     engine: $("engine").value,
     engine_options: JSON.stringify(EngineControls.read($("engine-options"))),
@@ -575,6 +590,7 @@ function currentOptions() {
     match_threshold: $("match-threshold").value,
     feature_max_dim: $("feature-max-dim").value,
     sinkhorn_iterations: $("sinkhorn-iterations").value,
+    stitching_mode: $("stitching-mode").value,
     alignment: $("alignment").value,
     ransac_thresh: $("ransac-thresh").value,
     reference: $("reference").value,
@@ -666,6 +682,15 @@ function handleEvent(e) {
       else log(`${e.marker}: ${e.message || ""}`);
       break;
     case "image":
+      if (e.meta?.completed_row !== undefined) {
+        $("completed-rows-card").hidden = false;
+        const link = document.createElement("a");
+        link.className = "btn";
+        link.href = e.image;
+        link.download = `row_${e.meta.completed_row}.jpg`;
+        link.textContent = `Download row ${e.meta.completed_row} · ${e.meta.width}×${e.meta.height}`;
+        $("completed-rows").appendChild(link);
+      }
       if (e.meta?.pair_diagnostic) {
         const p = e.meta.pair_diagnostic;
         state.pairDiagnostics.set(p.pair.join("-"), {...p, names: e.meta.names, image: e.image, drawn: e.meta.drawn_matches});
@@ -692,7 +717,7 @@ function handleEvent(e) {
     case "end":
       setConn("idle");
       resetButton();
-      setProgress(1, "Done");
+      setProgress(1, state.partialResult ? "Done · partial result" : "Done");
       state.running = false;
       break;
   }
@@ -771,6 +796,9 @@ async function openProject(pid) {
     $("engine-installed").checked = $("engine-no-superpoint").checked = false;
     await loadEngineCatalog(opts.engine || data.meta.engine);
     renderEngineDetails(opts.engine_options || {...opts, superglue_weights: opts.superglue_weights || opts.weights});
+    $("stitching-mode").value = opts.stitching_mode || "grid";
+    $("input-max-width").value = opts.input_max_width ?? 0;
+    $("preprocessing").value = opts.preprocessing || "none";
     for (const [key, id] of Object.entries({alignment:'alignment',filename_template:'filename-template',ransac_thresh:'ransac-thresh',reference:'reference',blend_levels:'blend-levels'})) {
       if (opts[key] !== undefined) $(id).value = opts[key];
     }
@@ -820,6 +848,8 @@ async function deleteProject(pid) {
 /* ============================ incremental mode ============================ */
 function incrOptions() {
   return {
+    input_max_width: $("input-max-width").value,
+    preprocessing: $("preprocessing").value,
     filename_template: $("filename-template").value,
     engine: $("engine").value,
     engine_options: JSON.stringify(EngineControls.read($("engine-options"))),
@@ -881,6 +911,7 @@ async function incrSeed(file) {
     data.events.forEach((e) => handleEvent(e));
     state.incrTemplate = template;
     $("filename-template").disabled = true;
+    $("input-max-width").disabled = $("preprocessing").disabled = true;
     incrShowSession(data.session_id);
     $("incr-msg").textContent = data.message;
     log("🧩 started incremental map: " + data.session_id);
@@ -926,6 +957,7 @@ async function incrReset() {
   }
   state.incrSession = null;
   state.incrTemplate = null;
+  $("input-max-width").disabled = $("preprocessing").disabled = false;
   $("filename-template").disabled = false;
   $("incr-seed-wrap").hidden = false;
   $("incr-session").hidden = true;
@@ -953,4 +985,4 @@ $("incr-reset").addEventListener("click", incrReset);
 applyPreset("balanced");
 loadProjects();
 
-loadEngineCatalog("superglue");
+loadEngineCatalog("disk-lightglue");

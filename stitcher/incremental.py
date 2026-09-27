@@ -74,6 +74,8 @@ class IncrementalStitcher:
     # ------------------------------------------------------------------ #
     def seed(self, image, position=None):
         """Initialise the map from the first image (world == its pixels)."""
+        from .preprocessing import preprocess_image
+        image = preprocess_image(image, self.config.input_max_width, self.config.preprocessing)
         self.reset()
         rep = self.reporter
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -123,6 +125,9 @@ class IncrementalStitcher:
         """Try to merge ``image`` into the map.  Raises :class:`StitchError`."""
         if self.empty:
             raise StitchError("Seed the map with a first image first.")
+
+        from .preprocessing import preprocess_image
+        image = preprocess_image(image, self.config.input_max_width, self.config.preprocessing)
 
         rep = self.reporter
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -323,6 +328,8 @@ class IncrementalStitcher:
     def _emit_result(self):
         preview, _ = resize_to_max_dim(self.map_img, 2000)
         meta = {
+            "input_max_width": self.config.input_max_width,
+            "preprocessing": self.config.preprocessing,
             "engine": self.engine.name,
             "engine_options": self.config.engine_options,
             "device": str(getattr(self.engine,"device","cpu")),

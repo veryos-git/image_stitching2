@@ -232,7 +232,7 @@ def require_available(id, options=None, legacy=None, incremental=False):
 
 def validate_geometry(threshold, reference='middle', blend_levels=6):
     import math
-    if not math.isfinite(threshold) or not 0 < threshold <= 20:
-        raise ValueError('RANSAC threshold must be finite and between 0 and 20 pixels')
+    if not math.isfinite(threshold) or not 0 < threshold <= 100:
+        raise ValueError('RANSAC threshold must be finite and between 0 and 100 pixels')
     if reference not in ('middle','first'): raise ValueError('Invalid reference image')
     if not 1 <= blend_levels <= 8: raise ValueError('Blend levels must be between 1 and 8')
