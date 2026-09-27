@@ -1,0 +1,6 @@
+numpy
+opencv-python-headless==5.0.0.93
+scipy==1.18.1
+tifffile==2026.9.20
+PyYAML
+# Optional PixelStitch worker: torch, torchvision and the pinned vendor repository.

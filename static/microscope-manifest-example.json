@@ -1,0 +1,1 @@
+{"schema_version":"1.0","slide_id":"my-slide","grid":{"row_direction":"+y","column_direction":"+x","nominal_overlap_fraction_x":null,"nominal_overlap_fraction_y":null},"tiles":[{"id":"tile-a","path":"a.tif","row":0,"column":0},{"id":"tile-b","path":"b.tif","row":0,"column":1}]}

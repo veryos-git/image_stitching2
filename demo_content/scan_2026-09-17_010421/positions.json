@@ -1,0 +1,296 @@
+{
+ "tile_size": [
+  1920,
+  1080
+ ],
+ "tiles": [
+  {
+   "file": "tile_r00_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c00.png",
+   "row": 0,
+   "col": 0,
+   "x": 0.0,
+   "y": 0.0
+  },
+  {
+   "file": "tile_r00_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c01.png",
+   "row": 0,
+   "col": 1,
+   "x": 1600.1397408604041,
+   "y": 47.80782792308507
+  },
+  {
+   "file": "tile_r00_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c02.png",
+   "row": 0,
+   "col": 2,
+   "x": 3031.039704029274,
+   "y": 128.90782627808906
+  },
+  {
+   "file": "tile_r00_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c03.png",
+   "row": 0,
+   "col": 3,
+   "x": 4626.2000122160825,
+   "y": 213.65334114350085
+  },
+  {
+   "file": "tile_r00_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c04.png",
+   "row": 0,
+   "col": 4,
+   "x": 6245.064052961474,
+   "y": 281.46298545627945
+  },
+  {
+   "file": "tile_r00_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r00_c05.png",
+   "row": 0,
+   "col": 5,
+   "x": 7577.6708502851925,
+   "y": 335.34017595501615
+  },
+  {
+   "file": "tile_r01_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c00.png",
+   "row": 1,
+   "col": 0,
+   "x": -3638.19462250951,
+   "y": -128.0706435762171
+  },
+  {
+   "file": "tile_r01_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c01.png",
+   "row": 1,
+   "col": 1,
+   "x": -2164.1303331214394,
+   "y": -54.205109812806484
+  },
+  {
+   "file": "tile_r01_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c02.png",
+   "row": 1,
+   "col": 2,
+   "x": -583.5829368557197,
+   "y": -10.183722340625707
+  },
+  {
+   "file": "tile_r01_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c03.png",
+   "row": 1,
+   "col": 3,
+   "x": 900.1220648649382,
+   "y": 10.564351381216538
+  },
+  {
+   "file": "tile_r01_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c04.png",
+   "row": 1,
+   "col": 4,
+   "x": 2158.885910682152,
+   "y": 57.904383665708494
+  },
+  {
+   "file": "tile_r01_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r01_c05.png",
+   "row": 1,
+   "col": 5,
+   "x": 3326.900548914562,
+   "y": 123.99075709819633
+  },
+  {
+   "file": "tile_r02_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c00.png",
+   "row": 2,
+   "col": 0,
+   "x": -3502.660433387174,
+   "y": -87.7355338834016
+  },
+  {
+   "file": "tile_r02_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c01.png",
+   "row": 2,
+   "col": 1,
+   "x": -2276.731082259204,
+   "y": -57.12280180368837
+  },
+  {
+   "file": "tile_r02_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c02.png",
+   "row": 2,
+   "col": 2,
+   "x": -858.9773591887429,
+   "y": -7.353230738685173
+  },
+  {
+   "file": "tile_r02_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c03.png",
+   "row": 2,
+   "col": 3,
+   "x": 682.7211558416271,
+   "y": 14.523394235543387
+  },
+  {
+   "file": "tile_r02_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c04.png",
+   "row": 2,
+   "col": 4,
+   "x": 2283.292601560809,
+   "y": 32.83319786436301
+  },
+  {
+   "file": "tile_r02_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r02_c05.png",
+   "row": 2,
+   "col": 5,
+   "x": 3672.354856121674,
+   "y": 104.85497662712379
+  },
+  {
+   "file": "tile_r03_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c00.png",
+   "row": 3,
+   "col": 0,
+   "x": -3586.9146685395335,
+   "y": -113.22143965027722
+  },
+  {
+   "file": "tile_r03_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c01.png",
+   "row": 3,
+   "col": 1,
+   "x": -2140.731568052499,
+   "y": -51.26609861613929
+  },
+  {
+   "file": "tile_r03_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c02.png",
+   "row": 3,
+   "col": 2,
+   "x": -580.2259153738088,
+   "y": 9.81557569565701
+  },
+  {
+   "file": "tile_r03_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c03.png",
+   "row": 3,
+   "col": 3,
+   "x": 915.4372553668974,
+   "y": 19.90491340304466
+  },
+  {
+   "file": "tile_r03_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c04.png",
+   "row": 3,
+   "col": 4,
+   "x": 2063.1671861706777,
+   "y": 41.78171899350974
+  },
+  {
+   "file": "tile_r03_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r03_c05.png",
+   "row": 3,
+   "col": 5,
+   "x": 3329.2671818570025,
+   "y": 92.98531297130121
+  },
+  {
+   "file": "tile_r04_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c00.png",
+   "row": 4,
+   "col": 0,
+   "x": -3485.6896431173363,
+   "y": -76.21228827358533
+  },
+  {
+   "file": "tile_r04_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c01.png",
+   "row": 4,
+   "col": 1,
+   "x": -2279.280286290639,
+   "y": -34.286572549072105
+  },
+  {
+   "file": "tile_r04_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c02.png",
+   "row": 4,
+   "col": 2,
+   "x": -862.9906901030889,
+   "y": 13.469268738384987
+  },
+  {
+   "file": "tile_r04_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c03.png",
+   "row": 4,
+   "col": 3,
+   "x": 698.1092968709625,
+   "y": 13.569268547692479
+  },
+  {
+   "file": "tile_r04_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c04.png",
+   "row": 4,
+   "col": 4,
+   "x": 2285.4757747788994,
+   "y": 17.680164741907397
+  },
+  {
+   "file": "tile_r04_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r04_c05.png",
+   "row": 4,
+   "col": 5,
+   "x": 3644.3757692434156,
+   "y": 65.78016464199315
+  },
+  {
+   "file": "tile_r05_c00.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c00.png",
+   "row": 5,
+   "col": 0,
+   "x": -3558.876622619662,
+   "y": -77.30600582378402
+  },
+  {
+   "file": "tile_r05_c01.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c01.png",
+   "row": 5,
+   "col": 1,
+   "x": -2140.704428958301,
+   "y": -44.94536626819195
+  },
+  {
+   "file": "tile_r05_c02.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c02.png",
+   "row": 5,
+   "col": 2,
+   "x": -550.8971680265618,
+   "y": 2.477544812866936
+  },
+  {
+   "file": "tile_r05_c03.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c03.png",
+   "row": 5,
+   "col": 3,
+   "x": 845.060704882004,
+   "y": -1.6976141831818514
+  },
+  {
+   "file": "tile_r05_c04.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c04.png",
+   "row": 5,
+   "col": 4,
+   "x": 2069.0869255875505,
+   "y": 28.52240095301813
+  },
+  {
+   "file": "tile_r05_c05.png",
+   "path": "/home/mintuser/code/OpenMicroscopeMotorization/scans/scan_2026-09-17_010421/tile_r05_c05.png",
+   "row": 5,
+   "col": 5,
+   "x": 3336.330525813813,
+   "y": 92.94903029239683
+  }
+ ]
+}

@@ -18,6 +18,8 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
+from stitcher.grid import DEFAULT_TEMPLATE, NAME_HELP, inspect_names, require_positions
 
 import cv2
 import numpy as np
@@ -37,7 +39,15 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 PROJECTS_DIR = BASE_DIR / "projects"
 INCR_DIR = BASE_DIR / "incremental"
 
+from comparison import router as comparison_router
+
 app = FastAPI(title="AI Panorama Stitcher", version="1.0.0")
+app.include_router(comparison_router)
+from microscope_api import router as microscope_router
+app.include_router(microscope_router)
+from guided_stitching import router as guided_router
+app.include_router(guided_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,7 +61,7 @@ async def _no_cache_static(request, call_next):
     """Never cache the UI/static assets (the app changes frequently)."""
     response = await call_next(request)
     path = request.url.path
-    if path in ("/", "/index.html") or path.startswith("/static/"):
+    if path in ("/", "/compare", "/classic", "/microscope", "/guided", "/index.html") or path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -114,21 +124,32 @@ def _run_job(job_id: str, paths, config_dict):
 
 @app.get("/")
 def index():
+    return FileResponse(STATIC_DIR / "overview.html")
+
+
+@app.get("/compare")
+def comparison_page():
+    return FileResponse(STATIC_DIR / "compare.html")
+
+
+@app.get("/classic")
+def classic_page():
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "jobs": len(jobs),
+    return {"status": "ok", "app": "stitch-lab", "overview": "/", "jobs": len(jobs),
             "incremental": len(incremental_sessions)}
 
 
 def _stitch_config(engine, weights, max_keypoints, match_threshold,
                    feature_max_dim, sinkhorn_iterations, ransac_thresh,
                    reference, refine, blend_levels, exposure, crop, viz=True,
-                   min_extend_ratio=0.0, min_extend_px=0.0):
+                   min_extend_ratio=0.0, min_extend_px=0.0, alignment="homography"):
     return StitchConfig(
         engine=engine,
+        alignment=alignment,
         superglue_weights=weights,
         max_keypoints=int(max_keypoints),
         match_threshold=float(match_threshold),
@@ -155,15 +176,29 @@ def _read_upload(file: UploadFile) -> np.ndarray:
     return img
 
 
+@app.post("/api/grid/positions")
+def grid_positions(payload: dict = Body(...)):
+    try:
+        names = payload.get("names", [])
+        if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+            raise ValueError("Provide a list of image filenames.")
+        result = inspect_names(names, payload.get("template", DEFAULT_TEMPLATE))
+        return {**result, "help": NAME_HELP}
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc), "help": NAME_HELP}, status_code=400)
+
+
 @app.post("/api/stitch")
 async def stitch(
     files: list[UploadFile] = File(...),
+    filename_template: str = Form(DEFAULT_TEMPLATE),
     engine: str = Form("superglue"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
     feature_max_dim: int = Form(1024),
     sinkhorn_iterations: int = Form(50),
+    alignment: Literal["homography", "translation"] = Form("homography"),
     ransac_thresh: float = Form(3.0),
     reference: str = Form("middle"),
     refine: bool = Form(False),
@@ -172,7 +207,12 @@ async def stitch(
     crop: bool = Form(True),
 ):
     if len(files) < 2:
-        return {"error": "Upload at least 2 images."}, 400
+        return JSONResponse({"error": "Upload at least 2 images."}, status_code=400)
+
+    try:
+        positions = require_positions([f.filename or "" for f in files], filename_template)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     job_id = uuid.uuid4().hex[:12]
     job_dir = UPLOAD_DIR / job_id
@@ -193,9 +233,14 @@ async def stitch(
 
     cfg = _stitch_config(engine, weights, max_keypoints, match_threshold,
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
-                         reference, refine, blend_levels, exposure, crop)
+                         reference, refine, blend_levels, exposure, crop, alignment=alignment)
+    cfg.pairing = "grid"
+    cfg.grid_positions = positions
+    cfg.input_names = [f.filename for f in files]
+    cfg.disconnected = "reject"
     config_dict = cfg.to_dict()
     job.config = dict(config_dict)
+    job.config["filename_template"] = filename_template
     job.num_images = len(paths)
 
     with _jobs_lock:
@@ -441,12 +486,14 @@ def _save_map(sid, map_img):
 @app.post("/api/incremental/start")
 def incremental_start(
     file: UploadFile = File(...),
+    filename_template: str = Form(DEFAULT_TEMPLATE),
     engine: str = Form("superglue"),
     weights: str = Form("outdoor"),
     max_keypoints: int = Form(1024),
     match_threshold: float = Form(0.2),
     feature_max_dim: int = Form(1024),
     sinkhorn_iterations: int = Form(50),
+    alignment: Literal["homography", "translation"] = Form("homography"),
     ransac_thresh: float = Form(3.0),
     refine: bool = Form(False),
     blend_levels: int = Form(6),
@@ -454,15 +501,21 @@ def incremental_start(
     min_extend_ratio: float = Form(0.0),
     min_extend_px: float = Form(0.0),
 ):
+    try:
+        position = require_positions([file.filename or ""], filename_template)[0]
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "message": str(exc), "events": []}, status_code=400)
     sid = uuid.uuid4().hex[:12]
     cfg = _stitch_config(engine, weights, max_keypoints, match_threshold,
                          feature_max_dim, sinkhorn_iterations, ransac_thresh,
                          "middle", refine, blend_levels, exposure, False,
                          min_extend_ratio=min_extend_ratio,
-                         min_extend_px=min_extend_px)
+                         min_extend_px=min_extend_px, alignment=alignment)
     stitcher = IncrementalStitcher(
         cfg, download_url=f"/api/incremental/{sid}/map.jpg")
     session = IncrementalSession(sid, stitcher)
+    session.filename_template = filename_template
+    session.grid_positions = {position}
     incremental_sessions[sid] = session
     _prune_incremental()
 
@@ -490,14 +543,20 @@ def incremental_add(
         return JSONResponse({"ok": False,
                              "message": "This session is finished."})
     try:
+        position = require_positions([file.filename or ""], session.filename_template)[0]
         img = _read_upload(file)
-    except StitchError as exc:
+    except (StitchError, ValueError) as exc:
         return {"ok": False, "message": str(exc), "events": []}
 
     before = len(session.events)
     with session.lock:
         try:
+            if position in session.grid_positions:
+                raise StitchError(f"Row {position[0]}, column {position[1]} is already in the map.")
+            if not any(abs(position[0] - r) + abs(position[1] - c) == 1 for r, c in session.grid_positions):
+                raise StitchError("Add an image in a neighboring row or column of the current grid first.")
             session.stitcher.add(img)
+            session.grid_positions.add(position)
             ok, message = True, f"Added image {session.stitcher.count}"
             _save_map(session.sid, session.stitcher.map_img)
         except StitchError as exc:
@@ -559,7 +618,16 @@ def main():
     UPLOAD_DIR.mkdir(exist_ok=True)
     PROJECTS_DIR.mkdir(exist_ok=True)
     INCR_DIR.mkdir(exist_ok=True)
-    print(f"\n  AI Panorama Stitcher  →  http://{args.host}:{args.port}\n")
+    browser_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+    if ":" in browser_host:
+        browser_host = f"[{browser_host}]"
+    base = f"http://{browser_host}:{args.port}"
+    print(f"\n  Stitch Lab\n\n  Overview:             {base}/\n"
+          f"  Pipeline comparison:  {base}/compare\n"
+          f"  Microscope mosaic:    {base}/microscope\n"
+          f"  Classic stitcher:     {base}/classic\n"
+          f"  Grow a mosaic:        {base}/guided\n\n"
+          "  Press Ctrl+C to stop the server.\n", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stitch Lab · Tools</title><link rel="stylesheet" href="/static/compare.css">
+<style>
+.tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:40px 0}
+.tool{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px;color:var(--text);min-height:305px}
+.tool:hover{border-color:var(--accent);text-decoration:none;background:#202923}.tool h2{font-size:25px;margin:14px 0}.tool p{color:var(--muted);margin:0 0 28px}.tool .open{margin-top:auto;color:var(--accent)}.tool .number{font-size:12px;letter-spacing:2px;color:var(--accent)}
+.launch{padding:24px;border-top:1px solid var(--line);color:var(--muted)}.launch code{display:inline-block;padding:7px 14px;margin-left:10px;border:1px solid var(--line);border-radius:6px;color:var(--accent)}
+@media(max-width:850px){.tools{grid-template-columns:1fr}.tool{min-height:240px}.launch{padding:20px 0}}
+</style>
+</head>
+<body>
+<header><a class="brand" href="/">◈ STITCH LAB</a><span>Image stitching workspace</span></header>
+<main>
+<section class="intro"><p class="eyebrow">YOUR TOOLS, IN ONE PLACE</p><h1>Bring your images<br><em>together.</em></h1><p>Choose a workspace to compare matching pipelines, assemble microscope scans, or build a panorama step by step.</p></section>
+<nav class="tools" aria-label="Stitching tools">
+<a class="tool" href="/compare"><span class="number">01 / EXPERIMENT</span><h2>Pipeline comparison</h2><p>Compare matching algorithms on demo images or your own uploads. Test shuffled and random images with automatic overlap discovery.</p><span class="open">Open comparison →</span></a>
+<a class="tool" href="/microscope"><span class="number">02 / MICROSCOPE</span><h2>Microscope mosaic</h2><p>Assemble row-and-column tile acquisitions with global alignment, refinement comparisons, original-precision TIFF exports, and quality reports.</p><span class="open">Open microscope tools →</span></a>
+<a class="tool" href="/classic"><span class="number">03 / PANORAMA</span><h2>Classic stitcher</h2><p>Stitch tiles with row and column positions in their filenames, in a batch or one image at a time. Inspect live processing steps and save sessions as projects.</p><span class="open">Open classic workspace →</span></a>
+<a class="tool" href="/guided"><span class="number">04 / BUILD IT YOUR WAY</span><h2>Grow a mosaic</h2><p>Upload an image set, choose a main image, and add overlapping images one at a time. Track remaining images and retry failed additions as your mosaic grows.</p><span class="open">Open guided stitching →</span></a>
+</nav>
+<div class="launch">Start all tools from the project folder: <code>./start</code><p>One server serves every workspace. Its console prints this overview link and each tool’s URL.</p></div>
+</main>
+</body></html>

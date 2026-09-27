@@ -1,0 +1,602 @@
+[
+ {
+  "a": "tile_r00_c00.png",
+  "b": "tile_r00_c01.png",
+  "dx": 1600.1397873935614,
+  "dy": 47.807829953703276,
+  "ncc": 0.9340398867567613,
+  "overlap_px": 330240,
+  "kind": "measured",
+  "residual": 4.657744235347167e-05
+ },
+ {
+  "a": "tile_r00_c00.png",
+  "b": "tile_r01_c00.png",
+  "dx": 1681.9,
+  "dy": 899.1,
+  "ncc": 0.16180610456379085,
+  "overlap_px": 43020,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r00_c01.png",
+  "b": "tile_r00_c02.png",
+  "dx": 1430.9,
+  "dy": 81.1,
+  "ncc": 0.8989638076971492,
+  "overlap_px": 489020,
+  "kind": "measured",
+  "residual": 3.686784713458548e-05
+ },
+ {
+  "a": "tile_r00_c01.png",
+  "b": "tile_r01_c01.png",
+  "dx": 1834.1,
+  "dy": -589.1,
+  "ncc": 0.17683741285013976,
+  "overlap_px": 41650,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r00_c02.png",
+  "b": "tile_r00_c03.png",
+  "dx": 1595.1603465398935,
+  "dy": 84.74551659182953,
+  "ncc": 0.9249877349017491,
+  "overlap_px": 323700,
+  "kind": "measured",
+  "residual": 3.839192171402824e-05
+ },
+ {
+  "a": "tile_r00_c02.png",
+  "b": "tile_r01_c02.png",
+  "dx": 1431.9,
+  "dy": -988.9,
+  "ncc": 0.20011514200312863,
+  "overlap_px": 44988,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r00_c03.png",
+  "b": "tile_r00_c04.png",
+  "dx": 1618.864070516957,
+  "dy": 67.80964564125634,
+  "ncc": 0.9231814971043758,
+  "overlap_px": 305624,
+  "kind": "measured",
+  "residual": 2.9801190948856646e-05
+ },
+ {
+  "a": "tile_r00_c03.png",
+  "b": "tile_r01_c03.png",
+  "dx": 1524.1,
+  "dy": 968.1,
+  "ncc": 0.16694556251221654,
+  "overlap_px": 43845,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r00_c04.png",
+  "b": "tile_r00_c05.png",
+  "dx": 1332.606807475967,
+  "dy": 53.8771909480115,
+  "ncc": 0.9472349664196135,
+  "overlap_px": 603288,
+  "kind": "measured",
+  "residual": 1.016218443061641e-05
+ },
+ {
+  "a": "tile_r00_c04.png",
+  "b": "tile_r01_c04.png",
+  "dx": -1460.9,
+  "dy": -987.9,
+  "ncc": 0.16721593009591515,
+  "overlap_px": 42780,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r00_c05.png",
+  "b": "tile_r01_c05.png",
+  "dx": -1781.0,
+  "dy": -788.0,
+  "ncc": -2.0,
+  "overlap_px": 40588,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c00.png",
+  "b": "tile_r01_c01.png",
+  "dx": 1474.0642952770097,
+  "dy": 73.86553397071128,
+  "ncc": 0.951247088637815,
+  "overlap_px": 448676,
+  "kind": "measured",
+  "residual": 5.892586851462209e-06
+ },
+ {
+  "a": "tile_r01_c00.png",
+  "b": "tile_r02_c00.png",
+  "dx": 1546.1,
+  "dy": -962.9,
+  "ncc": 0.16566196554358809,
+  "overlap_px": 44014,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c01.png",
+  "b": "tile_r01_c02.png",
+  "dx": 1580.5474071214705,
+  "dy": 44.02138781320616,
+  "ncc": 0.9520103880911674,
+  "overlap_px": 352240,
+  "kind": "measured",
+  "residual": 1.086110602485142e-05
+ },
+ {
+  "a": "tile_r01_c01.png",
+  "b": "tile_r02_c01.png",
+  "dx": 1770.1,
+  "dy": -777.1,
+  "ncc": 0.1770828447293077,
+  "overlap_px": 44998,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c02.png",
+  "b": "tile_r01_c03.png",
+  "dx": 1483.705012293681,
+  "dy": 20.748074040493634,
+  "ncc": 0.9310315066166216,
+  "overlap_px": 463220,
+  "kind": "measured",
+  "residual": 1.0577823711178416e-05
+ },
+ {
+  "a": "tile_r01_c02.png",
+  "b": "tile_r02_c02.png",
+  "dx": -324.1,
+  "dy": -52.1,
+  "ncc": 0.01968130985161345,
+  "overlap_px": 1638065,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c03.png",
+  "b": "tile_r01_c04.png",
+  "dx": 1258.7638525440527,
+  "dy": 47.34003250753733,
+  "ncc": 0.9473991451199529,
+  "overlap_px": 682813,
+  "kind": "measured",
+  "residual": 6.730535847883283e-06
+ },
+ {
+  "a": "tile_r01_c03.png",
+  "b": "tile_r02_c03.png",
+  "dx": -157.1,
+  "dy": 80.1,
+  "ncc": 0.020340874143478925,
+  "overlap_px": 1760238,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c04.png",
+  "b": "tile_r01_c05.png",
+  "dx": 1168.0146420142219,
+  "dy": 66.08637357343275,
+  "ncc": 0.9448215310015888,
+  "overlap_px": 762528,
+  "kind": "measured",
+  "residual": 3.784437293669805e-06
+ },
+ {
+  "a": "tile_r01_c04.png",
+  "b": "tile_r02_c04.png",
+  "dx": -1830.1,
+  "dy": 555.1,
+  "ncc": 0.17321525765441265,
+  "overlap_px": 46636,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r01_c05.png",
+  "b": "tile_r02_c05.png",
+  "dx": 1533.1,
+  "dy": 962.6661162138882,
+  "ncc": 0.16062533857269065,
+  "overlap_px": 45162,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c00.png",
+  "b": "tile_r02_c01.png",
+  "dx": 1225.929355235575,
+  "dy": 30.612732182601576,
+  "ncc": 0.9463423949680972,
+  "overlap_px": 728006,
+  "kind": "measured",
+  "residual": 4.108893193981264e-06
+ },
+ {
+  "a": "tile_r02_c00.png",
+  "b": "tile_r03_c00.png",
+  "dx": 1148.9,
+  "dy": -1021.9,
+  "ncc": 0.18817309423799136,
+  "overlap_px": 45548,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c01.png",
+  "b": "tile_r02_c02.png",
+  "dx": 1417.7537319460253,
+  "dy": 49.769571287465965,
+  "ncc": 0.9325818617243626,
+  "overlap_px": 517060,
+  "kind": "measured",
+  "residual": 8.87835169907398e-06
+ },
+ {
+  "a": "tile_r02_c01.png",
+  "b": "tile_r03_c01.png",
+  "dx": -1428.1,
+  "dy": -972.9,
+  "ncc": 0.19931137896443185,
+  "overlap_px": 53028,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c02.png",
+  "b": "tile_r02_c03.png",
+  "dx": 1541.6985279727999,
+  "dy": 21.876625270986324,
+  "ncc": 0.8975082362784674,
+  "overlap_px": 400982,
+  "kind": "measured",
+  "residual": 1.294583171703787e-05
+ },
+ {
+  "a": "tile_r02_c02.png",
+  "b": "tile_r03_c02.png",
+  "dx": 1750.9,
+  "dy": -832.1,
+  "ncc": 0.1763267274623551,
+  "overlap_px": 41990,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c03.png",
+  "b": "tile_r02_c04.png",
+  "dx": 1600.5714574217752,
+  "dy": 18.30980389937099,
+  "ncc": 0.9396026118135409,
+  "overlap_px": 338459,
+  "kind": "measured",
+  "residual": 1.1705720166409962e-05
+ },
+ {
+  "a": "tile_r02_c03.png",
+  "b": "tile_r03_c03.png",
+  "dx": -1719.9,
+  "dy": -829.1,
+  "ncc": 0.16676116714255143,
+  "overlap_px": 50250,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c04.png",
+  "b": "tile_r02_c05.png",
+  "dx": 1389.0622598602454,
+  "dy": 72.02177891407143,
+  "ncc": 0.9509868499000882,
+  "overlap_px": 535248,
+  "kind": "measured",
+  "residual": 5.3015402280735316e-06
+ },
+ {
+  "a": "tile_r02_c04.png",
+  "b": "tile_r03_c04.png",
+  "dx": 1809.1,
+  "dy": 554.9,
+  "ncc": 0.17232320471075133,
+  "overlap_px": 57860,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r02_c05.png",
+  "b": "tile_r03_c05.png",
+  "dx": 1867.1,
+  "dy": 248.9,
+  "ncc": 0.19245851188951285,
+  "overlap_px": 43264,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c00.png",
+  "b": "tile_r03_c01.png",
+  "dx": 1446.1831060634338,
+  "dy": 61.95534121015771,
+  "ncc": 0.9482166374397378,
+  "overlap_px": 482532,
+  "kind": "measured",
+  "residual": 5.579176541794233e-06
+ },
+ {
+  "a": "tile_r03_c00.png",
+  "b": "tile_r04_c00.png",
+  "dx": -1453.9,
+  "dy": -971.1,
+  "ncc": 0.15311820482551342,
+  "overlap_px": 50436,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c01.png",
+  "b": "tile_r03_c02.png",
+  "dx": 1560.5056634888815,
+  "dy": 61.08167462224526,
+  "ncc": 0.9375006521682798,
+  "overlap_px": 365821,
+  "kind": "measured",
+  "residual": 1.0814648115136171e-05
+ },
+ {
+  "a": "tile_r03_c01.png",
+  "b": "tile_r04_c01.png",
+  "dx": 1766.9,
+  "dy": -783.1,
+  "ncc": 0.14648470690616683,
+  "overlap_px": 45584,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c02.png",
+  "b": "tile_r03_c03.png",
+  "dx": 1495.6631812313517,
+  "dy": 10.089337964623155,
+  "ncc": 0.9344453864613383,
+  "overlap_px": 454750,
+  "kind": "measured",
+  "residual": 1.049379882945151e-05
+ },
+ {
+  "a": "tile_r03_c02.png",
+  "b": "tile_r04_c02.png",
+  "dx": -186.9,
+  "dy": -1049.1,
+  "ncc": 0.1515069246990122,
+  "overlap_px": 52020,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c03.png",
+  "b": "tile_r03_c04.png",
+  "dx": 1147.7299368390668,
+  "dy": 21.8768057412982,
+  "ncc": 0.9274196357134328,
+  "overlap_px": 817834,
+  "kind": "measured",
+  "residual": 6.037170839837076e-06
+ },
+ {
+  "a": "tile_r03_c03.png",
+  "b": "tile_r04_c03.png",
+  "dx": 1847.9,
+  "dy": -511.9,
+  "ncc": 0.17099031551909616,
+  "overlap_px": 41537,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c04.png",
+  "b": "tile_r03_c05.png",
+  "dx": 1266.1,
+  "dy": 51.20359409827097,
+  "ncc": 0.9273499179300709,
+  "overlap_px": 671284,
+  "kind": "measured",
+  "residual": 4.3153573108262795e-06
+ },
+ {
+  "a": "tile_r03_c04.png",
+  "b": "tile_r04_c04.png",
+  "dx": -1407.9,
+  "dy": -986.1,
+  "ncc": 0.15354150952450626,
+  "overlap_px": 47709,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r03_c05.png",
+  "b": "tile_r04_c05.png",
+  "dx": -1824.1,
+  "dy": 596.9,
+  "ncc": 0.1546516797377642,
+  "overlap_px": 45980,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c00.png",
+  "b": "tile_r04_c01.png",
+  "dx": 1206.4093609341794,
+  "dy": 41.9257158143206,
+  "ncc": 0.9378468328071875,
+  "overlap_px": 741132,
+  "kind": "measured",
+  "residual": 4.108463926740627e-06
+ },
+ {
+  "a": "tile_r04_c00.png",
+  "b": "tile_r05_c00.png",
+  "dx": -1692.9,
+  "dy": 869.1,
+  "ncc": 0.1734469040383804,
+  "overlap_px": 47880,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c01.png",
+  "b": "tile_r04_c02.png",
+  "dx": 1416.2896049475137,
+  "dy": 47.75584145536186,
+  "ncc": 0.9360136684960315,
+  "overlap_px": 519599,
+  "kind": "measured",
+  "residual": 8.76157251286831e-06
+ },
+ {
+  "a": "tile_r04_c01.png",
+  "b": "tile_r05_c01.png",
+  "dx": 1725.9,
+  "dy": -791.9,
+  "ncc": 0.15110500339206157,
+  "overlap_px": 56355,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c02.png",
+  "b": "tile_r04_c03.png",
+  "dx": 1561.1,
+  "dy": 0.09999999999999998,
+  "ncc": 0.9040463993376565,
+  "overlap_px": 386282,
+  "kind": "measured",
+  "residual": 1.3027344387179909e-05
+ },
+ {
+  "a": "tile_r04_c02.png",
+  "b": "tile_r05_c02.png",
+  "dx": 1738.9,
+  "dy": 850.9,
+  "ncc": 0.15647547062695802,
+  "overlap_px": 41860,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c03.png",
+  "b": "tile_r04_c04.png",
+  "dx": 1587.36648944809,
+  "dy": 4.1108963566380226,
+  "ncc": 0.9296533491878555,
+  "overlap_px": 357232,
+  "kind": "measured",
+  "residual": 1.1541296045997143e-05
+ },
+ {
+  "a": "tile_r04_c03.png",
+  "b": "tile_r05_c03.png",
+  "dx": -1823.1,
+  "dy": 602.1,
+  "ncc": 0.1796112444791459,
+  "overlap_px": 45792,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c04.png",
+  "b": "tile_r04_c05.png",
+  "dx": 1358.9,
+  "dy": 48.1,
+  "ncc": 0.9021902508529629,
+  "overlap_px": 579422,
+  "kind": "measured",
+  "residual": 5.5363856201921875e-06
+ },
+ {
+  "a": "tile_r04_c04.png",
+  "b": "tile_r05_c04.png",
+  "dx": 1556.1,
+  "dy": -953.1,
+  "ncc": 0.17691961311370324,
+  "overlap_px": 45738,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r04_c05.png",
+  "b": "tile_r05_c05.png",
+  "dx": 1708.4820422105865,
+  "dy": 770.1,
+  "ncc": 0.15144890979035197,
+  "overlap_px": 65199,
+  "kind": "measured",
+  "residual": 0.0
+ },
+ {
+  "a": "tile_r05_c00.png",
+  "b": "tile_r05_c01.png",
+  "dx": 1418.172198935266,
+  "dy": 32.360639670151954,
+  "ncc": 0.9441912446207691,
+  "overlap_px": 525594,
+  "kind": "measured",
+  "residual": 5.275148751806027e-06
+ },
+ {
+  "a": "tile_r05_c01.png",
+  "b": "tile_r05_c02.png",
+  "dx": 1589.8072720338237,
+  "dy": 47.42291131918955,
+  "ncc": 0.9409900384125769,
+  "overlap_px": 341923,
+  "kind": "measured",
+  "residual": 1.110463806045481e-05
+ },
+ {
+  "a": "tile_r05_c02.png",
+  "b": "tile_r05_c03.png",
+  "dx": 1395.9578816951132,
+  "dy": -4.175158827677933,
+  "ncc": 0.9466484800196711,
+  "overlap_px": 563824,
+  "kind": "measured",
+  "residual": 8.788160638287648e-06
+ },
+ {
+  "a": "tile_r05_c03.png",
+  "b": "tile_r05_c04.png",
+  "dx": 1224.0262270609398,
+  "dy": 30.220015279019435,
+  "ncc": 0.9437854965989817,
+  "overlap_px": 730800,
+  "kind": "measured",
+  "residual": 6.3569977537037794e-06
+ },
+ {
+  "a": "tile_r05_c04.png",
+  "b": "tile_r05_c05.png",
+  "dx": 1267.243604404765,
+  "dy": 64.42662945579036,
+  "ncc": 0.9480834903384869,
+  "overlap_px": 661780,
+  "kind": "measured",
+  "residual": 4.180123702706184e-06
+ }
+]

@@ -1,0 +1,8 @@
+-r requirements.txt
+einops==0.8.2
+kornia==0.8.3
+loguru==0.7.3
+yacs==0.1.8
+pillow
+gdown==6.4.0
+requests

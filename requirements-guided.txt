@@ -1,0 +1,9 @@
+-r requirements.txt
+# Inference imports required by the pinned upstream EfficientLoFTR source.
+einops==0.8.2
+kornia==0.8.3
+loguru==0.7.3
+yacs==0.1.8
+joblib==1.6.0
+pytorch-lightning==2.6.6
+gdown==6.4.0

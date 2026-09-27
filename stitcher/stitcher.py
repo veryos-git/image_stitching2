@@ -73,7 +73,12 @@ class StitchConfig:
     sinkhorn_iterations: int = 50
     ratio_test: float = 0.75           # classic matcher ratio test
     # Geometry / alignment
+    alignment: str = "homography"      # homography | translation
     ransac_thresh: float = 3.0
+    pairing: str = "sequential"       # sequential | unordered | grid
+    grid_positions: list | None = None # (row, column) for each input image
+    input_names: list | None = None
+    disconnected: str = "largest"     # largest | reject
     refine: bool = False               # photometric (ECC) refinement
     reference: str = "middle"          # middle | first
     # Compositing
@@ -90,6 +95,10 @@ class StitchConfig:
     # Assets / output
     weights_dir: str = "weights"
     viz: bool = True
+
+    def __post_init__(self):
+        if self.alignment not in ("homography", "translation"):
+            raise ValueError("Alignment must be homography or translation")
 
     def to_dict(self):
         return asdict(self)
@@ -138,6 +147,8 @@ class PanoramaStitcher:
         rep.plan({
             "engine": cfg.engine,
             "weights": cfg.superglue_weights,
+            "alignment": cfg.alignment,
+            "input_names": cfg.input_names,
             "num_images": len(images),
             "reference": cfg.reference,
         })
@@ -169,6 +180,8 @@ class PanoramaStitcher:
             rep.stage_progress("features", (i + 1) / len(images),
                                f"Image {i + 1}/{len(images)}")
             fs = self.engine.extract(g)
+            if cfg.viz and fs.small_gray is None:
+                fs.small_gray, fs.scale = resize_to_max_dim(g, cfg.feature_max_dim)
             features.append(fs)
             if cfg.viz:
                 kpts_small = fs.keypoints * fs.scale
@@ -189,84 +202,115 @@ class PanoramaStitcher:
 
         # ---- match ------------------------------------------------------- #
         n = len(features)
-        rep.stage_start("match", f"Matching {n - 1} pairs…")
-        matches = []
-        for i in range(n - 1):
-            rep.stage_progress("match", (i + 1) / (n - 1),
-                               f"Pair {i + 1}↔{i + 2}")
-            mkpts0, mkpts1, conf = self.engine.match(features[i],
-                                                     features[i + 1])
-            matches.append((mkpts0, mkpts1, conf))
-            if cfg.viz:
-                m0 = mkpts0 * features[i].scale
-                m1 = mkpts1 * features[i + 1].scale
-                viz = draw_matches(features[i].small_gray,
-                                   features[i + 1].small_gray, m0, m1, conf)
-                rep.image("match", encode_b64(viz),
-                          f"Matches {i + 1}↔{i + 2}",
-                          f"{len(mkpts0)} matches",
-                          {"pair": [i + 1, i + 2], "matches": int(len(mkpts0))})
-        rep.stage_done("match",
-                       " ".join(f"{len(m[0])}" for m in matches) + " matches/pair",
-                       {"matches_per_pair": [int(len(m[0])) for m in matches]})
+        graph = None
+        input_count = n
+        if cfg.pairing in ("unordered", "grid"):
+            from .unordered import align_unordered
+            Hs, included, original_ref, graph = align_unordered(self.engine, features, cfg, rep)
+            images = [images[i] for i in included]
+            sizes = [sizes[i] for i in included]
+            n = len(images)
+            ref = included.index(original_ref)
+        else:
+            rep.stage_start("match", f"Matching {n - 1} pairs…")
+            matches = []
+            for i in range(n - 1):
+                rep.stage_progress("match", (i + 1) / (n - 1),
+                                   f"Pair {i + 1}↔{i + 2}")
+                mkpts0, mkpts1, conf = self.engine.match(features[i],
+                                                         features[i + 1])
+                matches.append((mkpts0, mkpts1, conf))
+                if cfg.viz:
+                    m0 = mkpts0 * features[i].scale
+                    m1 = mkpts1 * features[i + 1].scale
+                    viz = draw_matches(features[i].small_gray,
+                                       features[i + 1].small_gray, m0, m1, conf)
+                    rep.image("match", encode_b64(viz),
+                              f"Matches {i + 1}↔{i + 2}",
+                              f"{len(mkpts0)} matches",
+                              {"pair": [i + 1, i + 2], "matches": int(len(mkpts0))})
+            rep.stage_done("match",
+                           " ".join(f"{len(m[0])}" for m in matches) + " matches/pair",
+                           {"matches_per_pair": [int(len(m[0])) for m in matches]})
 
-        # ---- align ------------------------------------------------------- #
-        rep.stage_start("align", "Estimating homographies…")
-        pairwise_H = []
-        for i, (mkpts0, mkpts1, _conf) in enumerate(matches):
-            rep.stage_progress("align", (i + 1) / (n - 1),
-                               f"Homography {i + 1}→{i + 2}")
-            if len(mkpts0) < 4:
-                raise StitchError(
-                    f"Not enough matches ({len(mkpts0)}) between image "
-                    f"{i + 1} and {i + 2}. Try a different engine or lower "
-                    "the match threshold.")
-            H, _ = estimate_homography(mkpts0, mkpts1, cfg.ransac_thresh)
-            if H is None:
-                raise StitchError(
-                    f"Homography between image {i + 1} and {i + 2} is "
-                    "degenerate (likely no overlap or repetitive scene).")
-            if cfg.refine:
-                H = refine_homography(grays[i], grays[i + 1], H)
-            inliers, _ = homography_inliers(mkpts0, mkpts1, H)
-            pairwise_H.append(H)
-            rep.log(f"H {i + 1}→{i + 2}: {inliers}/{len(mkpts0)} inliers",
-                    "info", "align")
+            # ---- align ------------------------------------------------------- #
+            rep.stage_start("align", f"Estimating {cfg.alignment} transforms…")
+            pairwise_H = []
+            for i, (mkpts0, mkpts1, _conf) in enumerate(matches):
+                rep.stage_progress("align", (i + 1) / (n - 1),
+                                   f"{cfg.alignment.title()} {i + 1}→{i + 2}")
+                if len(mkpts0) < 4:
+                    raise StitchError(
+                        f"Not enough matches ({len(mkpts0)}) between image "
+                        f"{i + 1} and {i + 2}. Try a different engine or lower "
+                        "the match threshold.")
+                if cfg.alignment == "translation":
+                    from .unordered import reliable_edge
+                    H, _, reason = reliable_edge(mkpts0, mkpts1, sizes[i], sizes[i + 1],
+                                                 cfg.ransac_thresh, alignment="translation")
+                    if H is None:
+                        raise StitchError(f"No reliable translation-only overlap between image {i + 1} and {i + 2}: {reason}. Images must have the same scale and orientation.")
+                else:
+                    H, _ = estimate_homography(mkpts0, mkpts1, cfg.ransac_thresh)
+                if H is None:
+                    raise StitchError(
+                        f"Homography between image {i + 1} and {i + 2} is "
+                        "degenerate (likely no overlap or repetitive scene).")
+                if cfg.refine and cfg.alignment == "homography":
+                    H = refine_homography(grays[i], grays[i + 1], H)
+                inliers, _ = homography_inliers(mkpts0, mkpts1, H)
+                pairwise_H.append(H)
+                rep.log(f"H {i + 1}→{i + 2}: {inliers}/{len(mkpts0)} inliers",
+                        "info", "align")
 
-        ref = 0 if cfg.reference == "first" else n // 2
-        Hs = self._global_homographies(pairwise_H, ref)
-        rep.stage_done(
-            "align",
-            f"Reference image #{ref + 1}",
-            {"reference": ref + 1,
-             "inliers_per_pair": [int(homography_inliers(m[0], m[1], H)[0])
-                                  for m, H in zip(matches, pairwise_H)]},
-        )
+            ref = 0 if cfg.reference == "first" else n // 2
+            Hs = self._global_homographies(pairwise_H, ref)
+            rep.stage_done(
+                "align",
+                f"Reference image #{ref + 1}",
+                {"reference": ref + 1,
+                 "inliers_per_pair": [int(homography_inliers(m[0], m[1], H)[0])
+                                      for m, H in zip(matches, pairwise_H)]},
+            )
 
         # ---- blend ------------------------------------------------------- #
+        blend_started = time.perf_counter()
+
+        def blend_progress(fraction, message):
+            elapsed = time.perf_counter() - blend_started
+            rep.stage_progress("blend", fraction, f"{message} · {elapsed:.1f}s elapsed")
+
         rep.stage_start("blend", "Warping & multi-band blending…")
-        rep.stage_progress("blend", 0.2, "Computing canvas")
+        blend_progress(0.0, "Computing canvas")
         offset, W, H, scale = blender.compute_canvas(
             Hs, sizes, max_output_dim=cfg.max_output_dim)
+        rep.log(f"Blend canvas: {W}×{H} ({W * H / 1e6:.1f} MP), "
+                f"{n} images, {cfg.blend_levels} pyramid levels; "
+                f"warped images and masks: {n * W * H * 4 / 2**20:.0f} MiB",
+                marker="blend")
 
         warped, masks = [], []
         for i, img in enumerate(images):
+            blend_progress(0.05 + 0.3 * i / n, f"Warping image {i + 1}/{n}")
             M = blender.final_transform(Hs[i], offset, scale)
             w_img, w_mask = blender.warp_image(img, M, W, H)
             warped.append(w_img)
             masks.append(w_mask)
-            rep.stage_progress("blend", 0.3 + 0.3 * (i + 1) / n,
-                               f"Warped image {i + 1}/{n}")
+            blend_progress(0.05 + 0.3 * (i + 1) / n, f"Warped image {i + 1}/{n}")
 
         gains = np.ones(n, np.float32)
         if cfg.exposure and n > 1:
-            rep.stage_progress("blend", 0.65, "Exposure compensation")
-            gains = blender.exposure_compensation(warped, masks)
+            blend_progress(0.35, "Exposure compensation")
+            gains = blender.exposure_compensation(
+                warped, masks,
+                progress=lambda f, msg: blend_progress(0.35 + 0.2 * f, msg))
 
-        rep.stage_progress("blend", 0.8,
-                           f"Multi-band blending ({cfg.blend_levels} levels)")
-        blended = blender.multi_band_blend(warped, masks, gains,
-                                           cfg.blend_levels)
+        blend_progress(0.55, f"Multi-band blending ({cfg.blend_levels} levels)")
+        blended = blender.multi_band_blend(
+            warped, masks, gains, cfg.blend_levels,
+            progress=lambda f, msg: blend_progress(0.55 + 0.4 * f, msg))
+        del warped
+        blend_progress(0.95, "Preparing preview and coverage mask")
 
         if cfg.viz:
             preview, _ = resize_to_max_dim(blended, 1600)
@@ -278,8 +322,9 @@ class PanoramaStitcher:
         for m in masks:
             weight_sum += m.astype(np.float32) / 255.0
 
+        del masks
         rep.stage_done("blend",
-                       f"Canvas {W}×{H} px",
+                       f"Canvas {W}×{H} px in {time.perf_counter() - blend_started:.1f}s",
                        {"canvas": {"w": W, "h": H},
                         "gains": [round(float(g), 3) for g in gains],
                         "downscaled": scale != 1.0})
@@ -297,11 +342,14 @@ class PanoramaStitcher:
 
         stats = {
             "engine": self.engine.name,
+            "alignment": cfg.alignment,
             "num_images": n,
+            "input_count": input_count,
+            "graph": graph,
             "canvas": {"w": W, "h": H},
             "output": {"w": result.shape[1], "h": result.shape[0]},
             "elapsed": round(time.time() - t0, 3),
-            "reference": ref + 1,
+            "reference": graph["reference"] if graph else ref + 1,
         }
         rep.result(encode_b64(result, ".jpg", 95), result.shape[1],
                    result.shape[0], stats)
@@ -315,7 +363,7 @@ class PanoramaStitcher:
         Hs = [None] * n
         Hs[ref] = np.eye(3)
         for i in range(ref - 1, -1, -1):
-            Hs[i] = pairwise_H[i] @ Hs[i + 1]
+            Hs[i] = Hs[i + 1] @ pairwise_H[i]
         for i in range(ref + 1, n):
-            Hs[i] = np.linalg.inv(pairwise_H[i - 1]) @ Hs[i - 1]
+            Hs[i] = Hs[i - 1] @ np.linalg.inv(pairwise_H[i - 1])
         return Hs

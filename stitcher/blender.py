@@ -93,17 +93,31 @@ def feather_mask(mask, power=1.0):
 # --------------------------------------------------------------------------- #
 # Exposure compensation
 # --------------------------------------------------------------------------- #
-def exposure_compensation(warped_images, masks, max_comp=0.6):
+def exposure_compensation(warped_images, masks, max_comp=0.6, progress=None):
     """Estimate per-image exposure gains so overlaps match in brightness."""
     n = len(warped_images)
     A, b = [], []
+    bounds = [cv2.boundingRect(mask) for mask in masks]
+    total = n * (n - 1) // 2
+    done = 0
     for i in range(n):
         for j in range(i + 1, n):
-            inter = (masks[i] > 0) & (masks[j] > 0)
+            if progress:
+                progress(done / max(1, total),
+                         f"Exposure overlap {done + 1}/{total} (images {i + 1}, {j + 1})")
+            done += 1
+            xi, yi, wi, hi = bounds[i]
+            xj, yj, wj, hj = bounds[j]
+            x0, y0 = max(xi, xj), max(yi, yj)
+            x1, y1 = min(xi + wi, xj + wj), min(yi + hi, yj + hj)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            roi = np.s_[y0:y1, x0:x1]
+            inter = (masks[i][roi] > 0) & (masks[j][roi] > 0)
             if inter.sum() < 500:
                 continue
-            mi = np.median(warped_images[i][inter])
-            mj = np.median(warped_images[j][inter])
+            mi = np.median(warped_images[i][roi][inter])
+            mj = np.median(warped_images[j][roi][inter])
             if mi < 1.0 or mj < 1.0:
                 continue
             # want g_i*mean_i == g_j*mean_j  =>  log g_i - log g_j = log mj - log mi
@@ -112,6 +126,8 @@ def exposure_compensation(warped_images, masks, max_comp=0.6):
             A.append(row)
             b.append(np.log(mj) - np.log(mi))
 
+    if progress:
+        progress(1.0, "Exposure overlaps complete")
     if not A:
         return np.ones(n, np.float32)
 
@@ -145,7 +161,7 @@ def _laplacian_pyramid(img, levels):
     return lp[::-1]
 
 
-def multi_band_blend(warped_images, masks, gains=None, levels=6):
+def multi_band_blend(warped_images, masks, gains=None, levels=6, progress=None):
     """Blend N canvas-aligned images using a Laplacian pyramid."""
     n = len(warped_images)
     if n == 1:
@@ -156,30 +172,49 @@ def multi_band_blend(warped_images, masks, gains=None, levels=6):
     if gains is None:
         gains = np.ones(n, np.float32)
 
-    img_laps, mask_gps = [], []
+    # Accumulate each image immediately instead of retaining N full pyramids.
+    blend_pyr, denominators = [], []
     for i in range(n):
-        weighted = warped_images[i].astype(np.float32) * gains[i]
-        weighted *= (masks[i] / 255.0)[..., None]
-        img_laps.append(_laplacian_pyramid(weighted, levels))
-        mask_gps.append(_gaussian_pyramid(masks[i].astype(np.float32) / 255.0,
-                                          levels))
+        if progress:
+            progress(0.8 * (i / n), f"Building pyramid for image {i + 1}/{n}")
+        weighted = warped_images[i].astype(np.float32)
+        weighted *= gains[i]
+        mask = masks[i].astype(np.float32) / 255.0
+        weighted *= mask[..., None]
+        laps = _laplacian_pyramid(weighted, levels)
+        del weighted
+        for level, lap in enumerate(laps):
+            if i == 0:
+                blend_pyr.append(lap)
+                denominators.append(mask)
+            else:
+                blend_pyr[level] += lap
+                denominators[level] += mask
+            if level < levels:
+                mask = cv2.pyrDown(mask)
+        del laps, lap, mask
+        if progress:
+            progress(0.8 * ((i + 1) / n), f"Accumulated image {i + 1}/{n}")
 
-    blend_pyr = []
-    for l in range(levels + 1):
-        num = np.zeros_like(img_laps[0][l])
-        den = np.zeros((num.shape[0], num.shape[1], 1), np.float32)
-        for i in range(n):
-            num += img_laps[i][l]
-            den += mask_gps[i][l][..., None]
+    for level, (num, den) in enumerate(zip(blend_pyr, denominators)):
+        if progress:
+            progress(0.8 + 0.1 * level / (levels + 1),
+                     f"Normalizing blend level {level + 1}/{levels + 1}")
         den[den < 1e-6] = 1.0
-        blend_pyr.append(num / den)
+        num /= den[..., None]
+    del denominators, den
 
     result = blend_pyr[-1]
     for l in range(levels, 0, -1):
+        if progress:
+            progress(0.9 + 0.09 * (levels - l) / levels,
+                     f"Reconstructing blend level {levels - l + 1}/{levels}")
         size = (blend_pyr[l - 1].shape[1], blend_pyr[l - 1].shape[0])
         result = cv2.pyrUp(result, dstsize=size)
         result = cv2.add(result, blend_pyr[l - 1])
 
+    if progress:
+        progress(1.0, "Multi-band blending complete")
     return np.clip(result, 0, 255).astype(np.uint8)
 
 

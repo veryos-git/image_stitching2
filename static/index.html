@@ -4,10 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Panorama Stitcher · SuperGlue</title>
-  <link rel="stylesheet" href="/static/style.css?v=6" />
+  <link rel="stylesheet" href="/static/style.css?v=9" />
 </head>
 <body>
   <header>
+    <a href="/" style="color:inherit">← All tools</a>
     <h1>AI <span class="ai">Panorama</span> Stitcher</h1>
     <p class="subtitle">SuperPoint + SuperGlue feature matching · live markers</p>
     <span class="badge" id="conn-badge">● idle</span>
@@ -17,14 +18,25 @@
     <!-- ===================== LEFT: controls ===================== -->
     <div>
       <div class="card">
-        <h2>1 · Batch stitch — all at once</h2>
+        <h2>1 · Batch stitch — grid images</h2>
+        <div class="field">
+          <label for="filename-template">Filename template (batch and incremental)</label>
+          <input id="filename-template" type="text" value="prefix_{rNN}_{cNN}.png" maxlength="256" aria-describedby="filename-help" />
+          <p class="hint" id="filename-help">Example: tile_r00_c09.png → row 0, column 9. “prefix” matches any prefix; {rNN} and {cNN} match r/c followed by digits. For custom labels, use {row} and {col}, e.g. scan_row{row}_col{col}.tif. Reset an active incremental map before changing its template.</p>
+          <p class="hint">Images without grid positions belong in the separate <a href="/compare">Pipeline comparison tool</a> (Unordered mode).</p>
+          <p class="hint" id="grid-status" role="status"></p>
+        </div>
         <div class="dropzone" id="dropzone">
           <span class="big">⛰️</span>
           Drop images here or click to browse<br />
-          <small>2+ images, keep them in left-to-right order</small>
+          <small>2+ grid images — row and column are read from filenames</small>
         </div>
         <input type="file" id="file-input" accept="image/*" multiple hidden />
         <div class="thumbs" id="thumbs"></div>
+        <div id="match-debug-summary" hidden>
+          <p id="match-debug-count" class="hint" role="status"></p>
+          <button id="match-debug-open" class="btn secondary" type="button">Inspect overlaps</button>
+        </div>
         <button class="btn" id="stitch-btn" style="margin-top:12px">⚡ Stitch panorama</button>
       </div>
 
@@ -122,6 +134,14 @@
             <input type="number" id="blend-levels" value="6" min="2" max="8" step="1" />
           </div>
         </div>
+        <div class="field">
+          <label for="alignment">Alignment</label>
+          <select id="alignment">
+            <option value="homography">Perspective (homography)</option>
+            <option value="translation">Translation only (x/y shifts)</option>
+          </select>
+          <p class="muted">Translation requires the same scale and orientation in all images.</p>
+        </div>
         <label class="check"><input type="checkbox" id="refine" /> Photometric (ECC) refinement</label>
         <label class="check"><input type="checkbox" id="exposure" checked /> Exposure compensation</label>
         <label class="check"><input type="checkbox" id="crop" checked /> Auto-crop black borders</label>
@@ -184,6 +204,34 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=6"></script>
+  <section id="grid-overlay" class="grid-overlay" role="dialog" aria-modal="false" aria-labelledby="grid-overlay-title" hidden>
+    <div id="grid-overlay-drag" class="grid-overlay-header" tabindex="0" aria-label="Move image grid. Drag or use arrow keys.">
+      <strong id="grid-overlay-title">Image grid</strong><span>Drag to move</span>
+    </div>
+    <p id="grid-overlay-caption" class="hint"></p>
+    <div id="grid-overlay-content" class="grid-overlay-content"></div>
+    <div class="grid-overlay-footer">Entire grid fits · orange: rejected overlap · red: disconnected groups. Click a tile to inspect.
+      <button id="grid-overlay-resize" aria-label="Resize image grid. Drag or use arrow keys." title="Drag to resize">◢</button>
+    </div>
+  </section>
+
+  <dialog id="match-debug" aria-labelledby="match-debug-title">
+    <div class="match-debug-header"><h2 id="match-debug-title">Overlap inspector</h2><button id="match-debug-close" type="button">Close</button></div>
+    <label for="match-debug-pair">Image pair</label>
+    <select id="match-debug-pair"></select>
+    <p id="match-debug-reason" role="status"></p>
+    <p id="match-debug-names"></p>
+    <a id="match-debug-full" target="_blank" rel="noopener"><img id="match-debug-image" alt="Two images side by side with lines connecting matched features" /></a>
+    <p id="match-debug-legend" class="hint"></p>
+    <p class="hint">Lines show candidate matches, including incorrect ones. Red → green indicates relative matcher confidence, not geometric inlier status. Click the preview to open it at full size.</p>
+  </dialog>
+
+  <dialog id="filename-warning" aria-labelledby="filename-warning-title">
+    <h2 id="filename-warning-title">Image filenames need row and column positions</h2>
+    <p id="filename-warning-message" style="white-space:pre-wrap"></p>
+    <p>For images without grid positions, use the separate <a href="/compare">Pipeline comparison tool</a> and select Unordered mode.</p>
+    <button class="btn" id="filename-warning-close">Adjust filename template</button>
+  </dialog>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

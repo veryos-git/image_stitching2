@@ -4,3 +4,13 @@ __pycache__/
 uploads/
 _test/
 *.log
+
+.model_cache/
+vendor/
+projects/
+incremental/
+
+weights/eloftr_outdoor.ckpt
+weights/*.download
+
+weights/matchanything_eloftr.ckpt

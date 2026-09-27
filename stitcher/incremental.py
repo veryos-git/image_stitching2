@@ -81,6 +81,7 @@ class IncrementalStitcher:
             "engine": self.engine.name,
             "weights": self.config.superglue_weights,
             "mode": "incremental",
+            "alignment": self.config.alignment,
         })
 
         rep.stage_start("prepare", "Creating map from image 1")
@@ -152,8 +153,19 @@ class IncrementalStitcher:
 
         # -- align + expand -------------------------------------------- #
         rep.stage_start("align", "Estimating transform & expanding map…")
-        H, mask = estimate_homography(mkpts_new, mkpts_map,
-                                      self.config.ransac_thresh)
+        if self.config.alignment == "translation":
+            from .unordered import reliable_edge
+            H, _, reason = reliable_edge(
+                mkpts_new, mkpts_map - self.offset, gray.shape[:2],
+                self.map_img.shape[:2], self.config.ransac_thresh, "translation")
+            if H is None:
+                rep.stage_error("align", "No reliable translation-only overlap")
+                raise StitchError(f"Could not place image {n} by translation: {reason}.")
+            H = translation_matrix(*self.offset) @ H
+            mask = np.linalg.norm(mkpts_new + H[:2, 2] - mkpts_map, axis=1) <= self.config.ransac_thresh
+        else:
+            H, mask = estimate_homography(mkpts_new, mkpts_map,
+                                          self.config.ransac_thresh)
         if H is None or mask.sum() < 4:
             rep.stage_error("align", "Degenerate transform")
             raise StitchError(
@@ -272,6 +284,7 @@ class IncrementalStitcher:
             "output": self._map_dims(),
             "elapsed": round(time.time() - self._t0, 3),
             "mode": "incremental",
+            "alignment": self.config.alignment,
             "download": self.download_url,
         }
         self.reporter.result(encode_b64(preview, ".jpg", 92),

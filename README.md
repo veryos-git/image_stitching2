@@ -1,3 +1,101 @@
+# Start all tools
+
+From this project folder, run:
+
+```bash
+./start
+```
+
+The console prints the overview URL (normally **http://127.0.0.1:8001/**) and
+links to all four tools. The overview page links to pipeline comparison,
+microscope mosaicing, the classic batch/incremental stitcher, and guided stitching.
+
+The launcher uses the existing `.venv`, reuses an already-running Stitch Lab,
+and selects the next free port if another application occupies the requested
+port. Stop a newly started server with **Ctrl+C**. To choose a port explicitly:
+`./start --port 9000`.
+
+A separate grid-aware microscope mosaicer is available at `/microscope`.
+See [MICROSCOPE.md](MICROSCOPE.md) for its CLI, manifest, TIFF exports,
+PixelStitch integration and validation limits.
+
+# Stitch Lab — pipeline comparison
+
+The `/compare` web page compares matching pipelines using identical images and
+shared RANSAC/compositing settings. The original batch/incremental workspace
+remains at `/static/index.html`.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-comparison.txt
+# For CPU-only PyTorch, install torch/torchvision from the PyTorch CPU index first.
+git clone https://github.com/verlab/accelerated_features vendor/accelerated_features
+.venv/bin/python server.py --port 8001
+```
+
+Open http://127.0.0.1:8001/compare. Three microscope demo tiles load by default;
+choose six tiles or the full 36-tile scan, or upload 2–36 images. Uploaded images
+can be reordered. The full demo uses snake ordering to maintain adjacency.
+Use **Shuffle current images** to test unknown ordering, or **Random images** to
+sample tiles from anywhere in the scan. Both select **Unordered · find overlaps**
+automatically. Random selections can contain missing links or entirely unrelated
+tiles; more images do not guarantee a connected panorama. The input names/order
+and random sample seed are saved in the report.
+
+Sequential mode requires overlap between adjacent inputs. Unordered mode tests
+all N(N−1)/2 pairs (630 for 36 images), validates homographies using at least 12
+inliers, 25% inlier ratio, spatial coverage and footprint/overlap checks, then
+places images along a maximum-inlier spanning tree. It works with uploads too.
+Choose **Largest connected group** for an explicitly labeled partial panorama,
+or **Require all images to connect** to reject disconnected sets. Reports show
+overlap groups, excluded input numbers, pair diagnostics and tree edges. Zero
+reliable overlaps produce a clear failure rather than an invented arrangement.
+Dense matchers can be expensive in this mode. The graph uses homographies and
+heuristic rejection; repetitive textures can still produce false connections.
+It does not perform global bundle adjustment, loop-closure optimization or
+non-planar 3D reconstruction.
+
+Available adapters: SIFT, ORB, XFeat, XFeat semi-dense, XFeat + LighterGlue,
+ALIKED/DISK/SIFT + LightGlue, indoor/outdoor LoFTR, RoMa, Tiny RoMa,
+MASt3R, and the original SuperPoint + SuperGlue baseline. XFeat uses the
+upstream **LighterGlue** checkpoint, not a generic LightGlue checkpoint.
+
+Missing dependencies are disabled with setup instructions. Dependencies being
+present does not guarantee checkpoint availability. Downloads happen on first
+selection, with errors shown per pipeline; other selected pipelines continue.
+Model caches live in `.model_cache/`. Runs are serialized. Matching uses grayscale
+for all adapters; learned dense models retain their internal resolution rules.
+The shared keypoint limit applies to sparse extraction and RoMa sampling, not LoFTR.
+Results include panorama downloads, stage timings, pairwise match/inlier counts,
+and JSON reports with settings, seed, device, and core package versions.
+Timing includes initialization/downloads, so rerun after caches are warm for
+useful speed comparisons. Inliers use symmetric transfer error <4 px; RANSAC
+uses 3 px. These are consistency metrics, not accuracy scores. Visually inspect
+outputs, especially on repetitive microscope textures.
+
+MASt3R is an optional research adapter. Follow the
+[upstream recursive installation](https://github.com/naver/mast3r), including its
+DUSt3R dependencies, then start this server with the MASt3R repository on
+`PYTHONPATH`. Its checkpoint is large and its CPU path has not been validated here.
+Its noncommercial and training-dataset restrictions are shown separately.
+Source/license references for all engines appear in the UI; see
+[LightGlue](https://github.com/cvg/LightGlue),
+[XFeat](https://github.com/verlab/accelerated_features),
+[LoFTR](https://github.com/zju3dv/LoFTR), and
+[RoMa](https://github.com/Parskatt/RoMa). Metadata is not a blanket clearance of
+all checkpoint or training-data rights.
+
+Comparison API: `GET /api/engines`, `GET /api/demos`,
+`POST /api/comparisons` (multipart `options` JSON plus optional `files`),
+`GET /api/comparisons/{id}`, and `GET /api/comparisons/{id}/report`.
+Reports and images remain in `uploads/comparisons/`; live job polling is in-memory
+and does not resume across server restarts. The app is intended for local use.
+
+Validation: install `httpx` and run
+`.venv/bin/python -m unittest discover -s tests -v`.
+
+---
+
 # ⛰️ AI Panorama Stitcher
 
 A powerful and fast **image stitching / mosaicing / panorama** engine powered by
@@ -182,6 +280,7 @@ near-identical frames are skipped cheaply.
 | `--match-threshold` | `0.2` | lower → more matches, more outliers |
 | `--feature-max-dim` | `1024` | resize before inference (speed vs. detail) |
 | `--sinkhorn` | `50` | SuperGlue optimal-transport iterations |
+| `--alignment` | `homography` | `translation` restricts alignment to x/y shifts (same scale and orientation); skips perspective ECC refinement |
 | `--ransac-thresh` | `3.0` | px reprojection threshold |
 | `--reference` | `middle` | which image anchors the global frame |
 | `--blend-levels` | `6` | multi-band pyramid depth |
@@ -236,3 +335,104 @@ download_weights.py
 SuperPoint & SuperGlue: Paul-Edouard Sarlin, Daniel DeTone, Tomasz Malisiewicz,
 Andrew Rabinovich — [SuperGluePretrainedNetwork](https://github.com/magicleap/SuperGluePretrainedNetwork).
 # image_stitching2
+
+## Guided stitching
+
+Open `/guided` (Grow a mosaic on the overview). Upload 2–60 images, select a
+main image, then click remaining thumbnails to add them one at a time. Successful
+additions gain valid pixel coverage and mark the image as stitched. Failed or
+non-extending additions leave both the mosaic and used-image list intact; retry
+after adding a connecting image. Already-used images cannot be added twice.
+
+This tool exclusively uses [EfficientLoFTR](https://github.com/zju3dv/EfficientLoFTR)
+(full outdoor pretrained model), with no fallback matcher. Other matcher requests
+are rejected by the API. The model matches each new image against original placed
+images, followed
+by translation-only displacement consensus and image blending. No homography,
+affine transform, rotation, scale, shear, or perspective is estimated. Original
+images are placed with whole-pixel x/y offsets without resampling. Images must
+have the same scale and orientation. Multiple strong placement hypotheses must
+agree. The canvas is capped at 40 megapixels / 16,000 pixels per side. Output is
+an 8-bit color PNG, with no auto-cropping or whole-canvas rescaling. Download at
+any stage, view at actual size, or restart with a different main image using the
+same uploads. Sessions survive page reloads but not server restarts. Each accepted
+map version remains in `uploads/guided/` for inspection.
+
+
+One-time setup for Grow a mosaic:
+
+```bash
+.venv/bin/python setup_efficientloftr.py
+./start
+```
+
+Setup installs pinned inference dependencies, checks out upstream revision
+`07e9c1401e71e9c556b1fda9d86d060af36ba176`, and downloads and checksum-verifies
+the authors' outdoor checkpoint (~193 MB). It updates one obsolete Kornia import
+in the upstream source for compatibility with Kornia 0.8.3. Source and weights
+stay local in `vendor/EfficientLoFTR` and `weights/eloftr_outdoor.ckpt`.
+Inference uses CPU or CUDA automatically, the upstream reparameterized full model,
+and grayscale inputs capped at 832 pixels with dimensions divisible by 32.
+Matched coordinates are mapped back independently along each axis to the original
+image resolution before translation estimation. No downloads occur during stitching.
+
+Grow a mosaic offers **Matching input → Edge detection (Canny)** before loading
+an image set. It is off by default. With this option, both images are resized to
+model resolution, lightly Gaussian-blurred, and filtered with Canny (50/150)
+before EfficientLoFTR inference. Only matching uses the edges; saved mosaics and
+thumbnails retain the original colors. The choice is fixed for that upload session
+and survives page reloads and choosing a different main image. Reload the image
+set to compare modes. Edges may help outlines but can remove useful texture;
+they are not guaranteed to improve matching. API: `edge_filter=true` on
+`POST /api/guided`; session responses report the active value.
+
+## MatchAnything comparison option
+
+The comparison page includes **MatchAnything · ELoFTR**, using the authors'
+[cross-modality model](https://zju3dv.github.io/MatchAnything/), separate from
+ordinary LoFTR and the EfficientLoFTR outdoor model used by Grow a mosaic.
+
+```bash
+.venv/bin/python setup_matchanything.py
+./start
+```
+
+Select MatchAnything on `/compare`, select any other pipelines to compare, and
+run the same images through them. CPU and CUDA are supported. Setup downloads
+source from the authors' Hugging Face Space pinned to revision
+`6a7bcb589ec8da3a9e861e799122beaa5eba2193` and extracts only the ELoFTR checkpoint
+from their official weight archive (~483 MB download). It verifies the checkpoint
+SHA-256 before installation. Two import compatibility patches keep modern Kornia
+and the project's module namespace working. Inference uses the upstream ELoFTR
+configuration, grayscale resizing, square padding with validity masks, and returns
+matches in original image coordinates. No model downloads occur during comparison.
+This option does not include the separate MatchAnything RoMa variant.
+
+The classic workspace and pipeline comparison both offer **Alignment → Translation only (x/y shifts)**. This works for sequential and unordered batch stitching and for the classic incremental map. Unsupported overlaps fail without falling back to perspective alignment. The default remains perspective (homography). From the CLI, use `python run_stitcher.py --input img1.jpg img2.jpg --engine sift --alignment translation -o panorama.jpg`.
+
+In the **classic workspace**, tile filenames must include their logical row and
+column. The default template `prefix_{rNN}_{cNN}.png` recognizes names such as
+`tile_r00_c09.png` (row 0, column 9). `prefix` accepts any prefix, and `NN` accepts
+one or more digits. Change **Filename template** for other naming schemes:
+`scan_row{row}_col{col}.tif`, for example, matches `scan_row2_col17.tif`.
+The preview displays detected positions and sorts them numerically. Batch
+stitching searches horizontal and vertical grid neighbors, using image content
+to estimate their pixel offsets; row/column indices alone do not specify tile
+spacing. Missing or duplicate positions trigger a popup and block the run until
+corrected. Incremental tiles must have an unused position adjacent to the map;
+the template is fixed until that map is reset. The classic API also validates
+names (`filename_template` on `/api/stitch` and `/api/incremental/start`).
+For random images without row/column names, use the separate **Pipeline comparison**
+workspace at `/compare` and select **Unordered · find overlaps**.
+
+To debug a classic grid run, click a tile in the floating grid or choose
+**Inspect overlaps** below the upload area. Orange borders indicate rejected
+neighbor overlaps; red borders indicate rejected pairs whose images belong to
+different connected groups. The inspector lists the selected tile's tested
+neighbors, with rejected pairs first, and shows filenames, rejection reasons,
+match/inlier counts, and side-by-side matching previews. Lines show candidate
+matches colored by relative matcher confidence, **not** geometric inlier status;
+at most 500 lines are drawn per pair. Zero-match pairs still show both images.
+Diagnostics remain available after a failed run and their previews are included
+when saving the session as a project. Runs made before this feature must be
+rerun to record the previews.

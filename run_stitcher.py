@@ -56,6 +56,8 @@ def main():
     ap.add_argument("--match-threshold", type=float, default=None)
     ap.add_argument("--feature-max-dim", type=int, default=None)
     ap.add_argument("--sinkhorn", type=int, default=None)
+    ap.add_argument("--alignment", choices=["homography", "translation"],
+                    default="homography", help="translation allows only x/y shifts")
     ap.add_argument("--ransac-thresh", type=float, default=3.0)
     ap.add_argument("--reference", default="middle", choices=["middle", "first"])
     ap.add_argument("--no-refine", action="store_true")
@@ -74,6 +76,7 @@ def main():
 
     cfg = StitchConfig(
         engine=args.engine,
+        alignment=args.alignment,
         superglue_weights=args.weights,
         ransac_thresh=args.ransac_thresh,
         reference=args.reference,

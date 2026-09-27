@@ -74,6 +74,8 @@ def draw_matches(gray0, gray1, mkpts0, mkpts1, conf=None, max_draw=2000):
 
     mkpts0 = np.asarray(mkpts0, dtype=np.float32)
     mkpts1 = np.asarray(mkpts1, dtype=np.float32)
+    if len(mkpts0) == 0:
+        return out
     if conf is None:
         conf = np.ones(len(mkpts0))
     conf = np.asarray(conf, dtype=np.float32)

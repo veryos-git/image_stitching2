@@ -203,6 +203,12 @@ def build_engine(config, device=None):
         pass
 
     name = (config.get("engine") or "superglue").lower()
+    if name == "matchanything-eloftr":
+        from .matchanything import MatchAnythingEngine
+        return MatchAnythingEngine(config, device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    if name == "efficientloftr":
+        from .efficientloftr import EfficientLoFTREngine
+        return EfficientLoFTREngine(config, device or ("cuda" if torch.cuda.is_available() else "cpu"))
     if name in ("superglue", "superpoint+superglue"):
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -211,4 +217,8 @@ def build_engine(config, device=None):
         return ClassicEngine(config, "orb")
     if name == "sift":
         return ClassicEngine(config, "sift")
+    from .catalog import CATALOG
+    if name in CATALOG:
+        from .alternatives import AlternativeEngine
+        return AlternativeEngine(config, device or ("cuda" if torch.cuda.is_available() else "cpu"))
     raise ValueError(f"Unknown engine: {name}")
