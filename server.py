@@ -215,6 +215,10 @@ async def stitch(
     alignment: Literal["homography", "translation"] = Form("translation"),
     ransac_thresh: float = Form(50.0),
     stitching_mode: Literal["grid", "rows_first"] = Form("rows_first"),
+    flatfield: bool = Form(False),
+    global_adjustment: bool = Form(False),
+    guided_retry: bool = Form(False),
+    grid_priors: bool = Form(False),
     reference: str = Form("middle"),
     refine: bool = Form(False),
     blend_levels: int = Form(6),
@@ -225,6 +229,10 @@ async def stitch(
         return JSONResponse({"error": "Upload at least 2 images."}, status_code=400)
 
     try:
+        if (global_adjustment or guided_retry or grid_priors) and (alignment != 'translation' or stitching_mode != 'grid'):
+            raise ValueError('Global adjustment, guided retries and grid predictions require translation alignment and single-pass grid mode.')
+        if flatfield and preprocessing != 'none':
+            raise ValueError('Flat-field correction requires original colors, not Sobel preprocessing.')
         validate_geometry(ransac_thresh,reference,blend_levels)
         positions = require_positions([f.filename or "" for f in files], filename_template)
         resolved = require_available(engine, json.loads(engine_options), dict(
@@ -258,6 +266,10 @@ async def stitch(
     cfg.diagnostics_url = f'/api/jobs/{job_id}/diagnostics'
     cfg.pairing = "grid"
     cfg.stitching_mode = stitching_mode
+    cfg.flatfield = flatfield
+    cfg.global_adjustment = global_adjustment
+    cfg.guided_retry = guided_retry
+    cfg.grid_priors = grid_priors
     cfg.grid_positions = positions
     cfg.input_names = [f.filename for f in files]
     cfg.disconnected = "reject"
@@ -699,8 +711,12 @@ def compare_pair(payload: dict = Body(...)):
         all_options = payload.get('engine_options',{})
         if not isinstance(all_options,dict): raise ValueError('engine_options must map engine IDs to options')
         resolved = {id:require_available(id,all_options.get(id),saved) for id in selected}
-        images = [cv2.imread(str(paths[i-1])) for i in pair]
+        images = [cv2.imread(str(path)) for path in paths] if saved.get('flatfield') else [cv2.imread(str(paths[i-1])) for i in pair]
         if any(img is None for img in images): raise ValueError('Could not load saved input image')
+        if saved.get('flatfield'):
+            from stitcher.enhancements import correct_flatfield
+            corrected = correct_flatfield(images)
+            images = [corrected[i-1] for i in pair]
         from stitcher.preprocessing import preprocess_image
         images = [preprocess_image(img, saved.get('input_max_width', 0), saved.get('preprocessing', 'none'))
                   for img in images]
@@ -734,7 +750,7 @@ def compare_pair(payload: dict = Body(...)):
 @app.get('/api/jobs/{job_id}/diagnostics/{retry_id}/{filename}')
 def retry_diagnostic(job_id: str, retry_id: str, filename: str):
     job = jobs.get(job_id)
-    if job is None or not job.upload_dir or not retry_id.startswith('retry-') or Path(retry_id).name!=retry_id or Path(filename).name!=filename:
+    if job is None or not job.upload_dir or (retry_id != 'guided' and not retry_id.startswith('retry-')) or Path(retry_id).name!=retry_id or Path(filename).name!=filename:
         return JSONResponse({'error':'Unknown diagnostic'},status_code=404)
     path = Path(job.upload_dir)/'diagnostics'/retry_id/filename
     if not path.is_file(): return JSONResponse({'error':'Unknown diagnostic'},status_code=404)

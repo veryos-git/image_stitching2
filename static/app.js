@@ -33,6 +33,18 @@ $("alignment").addEventListener("change", () => {
 
 $("alignment").dispatchEvent(new Event("change"));
 
+function updateBatchCorrections() {
+  const grid = $("alignment").value === 'translation' && $("stitching-mode").value === 'grid';
+  for (const id of ['global-adjustment', 'guided-retry', 'grid-priors']) {
+    $(id).disabled = !grid;
+    if (!grid) $(id).checked = false;
+  }
+  $("flatfield").disabled = $("preprocessing").value !== 'none';
+  if ($("flatfield").disabled) $("flatfield").checked = false;
+}
+for (const id of ['alignment', 'stitching-mode', 'preprocessing']) $(id).addEventListener('change', updateBatchCorrections);
+updateBatchCorrections();
+
 /* ============================ utilities ============================ */
 function log(msg, level = "") {
   const line = document.createElement("div");
@@ -551,10 +563,11 @@ function showResult(ev) {
   const m = ev.meta || {};
   state.partialResult = !!m.partial;
   const notice = $("result-notice");
-  notice.hidden = !m.partial;
+  const predicted = m.graph?.predicted_edges?.length || 0;
+  notice.hidden = !m.partial && !predicted;
   notice.textContent = m.partial
     ? `Partial result: ${m.num_rows} of ${m.completed_rows.length + m.failed_rows.length} rows, ${m.num_images} of ${m.input_count} tiles. ${(m.warnings || []).join(" ")}`
-    : "";
+    : predicted ? `Includes ${predicted} predicted grid link(s). These placements are inferred, not verified image matches. Inspect the run diagnostics before treating the mosaic as fully registered.` : "";
   const items = [
     ["Engine", m.engine || "—"],
     ["Images", m.num_images || "—"],
@@ -580,6 +593,10 @@ function showResult(ev) {
 /* ============================ stitch ============================ */
 function currentOptions() {
   return {
+    flatfield: $("flatfield").checked,
+    global_adjustment: $("global-adjustment").checked,
+    guided_retry: $("guided-retry").checked,
+    grid_priors: $("grid-priors").checked,
     input_max_width: $("input-max-width").value,
     preprocessing: $("preprocessing").value,
     filename_template: $("filename-template").value,
@@ -803,6 +820,9 @@ async function openProject(pid) {
       if (opts[key] !== undefined) $(id).value = opts[key];
     }
     for (const key of ['crop','refine','exposure']) if (opts[key] !== undefined) $(key).checked = opts[key];
+    for (const key of ['flatfield', 'global_adjustment', 'guided_retry', 'grid_priors']) {
+      $(key.replaceAll('_', '-')).checked = opts[key] === true;
+    }
     $("alignment").dispatchEvent(new Event('change'));
     $("project-name").value = data.meta.name || "";
     state.images = await Promise.all((data.inputs || []).map(async input => {

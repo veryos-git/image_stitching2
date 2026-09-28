@@ -64,6 +64,10 @@ PRESETS = {
 class StitchConfig:
     input_max_width: int = 0          # 0 preserves original size
     preprocessing: str = "none"      # none | sobel
+    flatfield: bool = False
+    global_adjustment: bool = False
+    guided_retry: bool = False
+    grid_priors: bool = False
     # Engine / features
     engine: str = "superglue"          # superglue | sift | orb
     superglue_weights: str = "outdoor"  # indoor | outdoor
@@ -116,6 +120,11 @@ class StitchConfig:
             raise ValueError("Alignment must be homography or translation")
         if self.stitching_mode not in ("grid", "rows_first"):
             raise ValueError("Stitching mode must be grid or rows_first")
+        if (self.global_adjustment or self.guided_retry or self.grid_priors) and (
+                self.alignment != 'translation' or self.stitching_mode != 'grid' or self.pairing != 'grid'):
+            raise ValueError('Global adjustment, guided retries and grid predictions require translation alignment and single-pass grid mode.')
+        if self.flatfield and self.preprocessing != 'none':
+            raise ValueError('Flat-field correction requires original colors, not Sobel preprocessing.')
 
     def to_dict(self):
         return asdict(self)
@@ -151,6 +160,8 @@ class PanoramaStitcher:
     # Public entry points
     # ------------------------------------------------------------------ #
     def stitch_paths(self, paths):
+        if self.config.flatfield:
+            return self.stitch([load_image(p)[0] for p in paths])
         bgr, gray = [], []
         for p in paths:
             try:
@@ -174,6 +185,11 @@ class PanoramaStitcher:
         Returns a :class:`StitchResult`.
         """
         cfg = self.config
+        if cfg.flatfield and not _preprocessed:
+            from .enhancements import correct_flatfield
+            self.reporter.log('Estimating flat field from the input tiles…', marker='prepare')
+            images = correct_flatfield(images)
+            grays = None
         if grays is not None and len(grays) != len(images):
             raise StitchError("images/gray length mismatch")
         if not _preprocessed and (cfg.input_max_width or cfg.preprocessing != "none"):
@@ -254,7 +270,7 @@ class PanoramaStitcher:
         input_count = n
         if cfg.pairing in ("unordered", "grid"):
             from .unordered import align_unordered
-            Hs, included, original_ref, graph = align_unordered(self.engine, features, cfg, rep)
+            Hs, included, original_ref, graph = align_unordered(self.engine, features, cfg, rep, images=images)
             images = [images[i] for i in included]
             if input_masks is not None:
                 input_masks = [input_masks[i] for i in included]
@@ -402,6 +418,7 @@ class PanoramaStitcher:
             rep.stage_done("crop", "Skipped", {"bbox": [0, 0, W, H]})
 
         stats = {
+            "flatfield": cfg.flatfield,
             "input_max_width": cfg.input_max_width,
             "preprocessing": cfg.preprocessing,
             "engine": self.engine.name,

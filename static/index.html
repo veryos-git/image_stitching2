@@ -169,6 +169,15 @@
         <label class="check"><input type="checkbox" id="refine" /> Photometric (ECC) refinement</label>
         <label class="check"><input type="checkbox" id="exposure" checked /> Exposure compensation</label>
         <label class="check"><input type="checkbox" id="crop" checked /> Auto-crop black borders</label>
+        <div class="field">
+          <h3>Optional batch corrections</h3>
+          <label class="check"><input type="checkbox" id="flatfield" /> Estimate and correct illumination shading</label>
+          <p class="muted">Both batch modes; requires equal-sized tiles and Original colors. Estimates a flat field across tiles before resizing. Repeated specimen structures can influence the estimate.</p>
+          <label class="check"><input type="checkbox" id="global-adjustment" /> Optimize all measured grid translations together</label>
+          <label class="check"><input type="checkbox" id="guided-retry" /> Retry failed overlaps with the selected matcher</label>
+          <label class="check"><input type="checkbox" id="grid-priors" /> Allow predicted placement for missing grid links</label>
+          <p class="muted" id="grid-corrections-hint">Select Grid neighbors (single pass) and Translation only for these three options. Retries match predicted overlap crops. Predicted links use consistent measured grid steps and are reported separately; they are not verified image matches. These options can increase runtime and memory use. They do not apply to incremental stitching.</p>
+        </div>
         <input type="hidden" id="sinkhorn-iterations" value="50" />
       </div>
 

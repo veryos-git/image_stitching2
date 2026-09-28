@@ -32,6 +32,17 @@ PixelStitch integration and validation limits.
 
 # Learned models in the classic workspace
 
+Classic also offers four **Optional batch corrections**, all off by default:
+
+- **Estimate and correct illumination shading** estimates a smooth, per-channel flat field from up to 48 equal-sized original tiles, then corrects all tiles before input resizing and matching. It works in both batch modes with Original colors, and runs only once before row stitching. Recurring specimen structures can bias the estimate; it is not a substitute for a calibrated flat field.
+- **Optimize all measured grid translations together** replaces spanning-tree placement with six Huber-reweighted least-squares iterations over accepted translation constraints. Edges are weighted by inlier count; loop residuals and resulting positions are saved in `diagnostics/graph.json`.
+- **Retry failed overlaps with the selected matcher** predicts overlap from connected measured paths or at least two consistent measured steps in the same grid direction. It reruns the same feature matcher on overlap crops, restores full processed-tile coordinates, and applies the existing geometric checks plus a prediction-distance check. Retry artifacts are retained separately under `diagnostics/guided/`. No NCC matcher or automatic model substitution is introduced.
+- **Allow predicted placement for missing grid links** adds explicitly marked low-weight (`0.02`) constraints between measured components when at least two agreeing grid steps support the prediction and the predicted tiles overlap. Outputs disclose predicted links; diagnostics retain them separately from accepted measured pairs. With no adequate measured support, the grid still fails rather than assigning arbitrary positions.
+
+The three graph options require **Grid neighbors (single pass)** and **Translation only**. They can be enabled independently. They do not apply to rows-first or incremental stitching. Saved projects restore all four settings; older projects default them to off. Exposure compensation remains its existing independent checkbox. These options may increase runtime and memory use, and do not guarantee that 256 px inputs will stitch successfully. To retain original tile detail, set **Input width** to `0`; the separate model matching-resolution setting still controls feature inference.
+
+Validation: `python -m unittest discover -s tests -p 'test_enhancements.py' -v` covers loop adjustment, weak priors, guided crop coordinates and recovery, rejection of unsupported predictions, flat-field behavior, API validation and saved settings. With an isolated server on port 8769 and Chrome/Playwright installed, `python tests/browser_enhancements.py` checks the controls, a batch run, and project restoration.
+
 Opening `/` redirects to `/classic`; all tools remain listed at `/overview`.
 Classic defaults to **DISK + LightGlue**, **translation only (XY)**,
 **50 px RANSAC** (maximum **100 px**), and **Rows first, then combine**.

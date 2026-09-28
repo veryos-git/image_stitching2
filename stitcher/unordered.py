@@ -53,7 +53,7 @@ def reliable_edge(x, y, shape0, shape1, threshold, alignment="homography", detai
         return None, 0, 'degenerate geometry'
 
 
-def align_unordered(engine, features, config, reporter):
+def align_unordered(engine, features, config, reporter, images=None):
     from .stitcher import StitchError
     n = len(features)
     pairs = list(combinations(range(n), 2))
@@ -92,7 +92,11 @@ def align_unordered(engine, features, config, reporter):
                 {'pair_diagnostic':diagnostic,'drawn_matches':min(diagnostic['matches'],500),'names':names})
         if H is not None:
             edges.append((diagnostic['inliers'],i,j,H))
-    reporter.stage_done('match', f'{len(edges)}/{len(pairs)} reliable overlaps', {'matches_per_pair':[p['matches'] for p in diagnostics]})
+    retries, priors = [], []
+    if config.guided_retry or config.grid_priors:
+        from .enhancements import recover_edges
+        edges, retries, priors = recover_edges(engine, features, images, config, reporter, pairs, edges, diagnostics)
+    reporter.stage_done('match', f'{len(edges)-len(priors)}/{len(pairs)} reliable overlaps', {'matches_per_pair':[p['matches'] for p in diagnostics]})
     reporter.stage_start('align', 'Building overlap graph…')
     # Kruskal: highest-inlier edges form a maximum spanning forest.
     parent = list(range(n))
@@ -113,6 +117,8 @@ def align_unordered(engine, features, config, reporter):
     included = components[0]
     excluded = [i for i in range(n) if i not in included]
     graph = dict(mode=config.pairing, grid_positions=config.grid_positions, pairs=diagnostics, components=[[i+1 for i in c] for c in components], included=[i+1 for i in included], excluded=[i+1 for i in excluded], tested_pairs=len(pairs), accepted_pairs=len(edges))
+    graph.update(accepted_pairs=len(edges)-len(priors), guided_retries=retries, predicted_edges=priors,
+                 placement_includes_predictions=bool(priors), global_adjustment=config.global_adjustment)
     if config.diagnostics_dir:
         import json
         from pathlib import Path
@@ -151,4 +157,18 @@ def align_unordered(engine, features, config, reporter):
                 queue.append(j)
     graph['reference'] = reference + 1
     graph['tree_pairs'] = [[i+1,j+1] for _,i,j,_ in tree if i in adjacency]
+    if config.global_adjustment:
+        from .enhancements import solve_translations
+        from .geometry import translation_matrix
+        positions, _ = solve_translations(n, edges)
+        transforms = {i: translation_matrix(*(positions[i]-positions[reference])) for i in included}
+    if config.global_adjustment or config.grid_priors or config.guided_retry:
+        graph['positions'] = {str(i+1): transforms[i][:2,2].tolist() for i in included}
+        graph['layout_residuals'] = [dict(pair=[i+1,j+1], residual_px=float(np.linalg.norm(
+            transforms[j][:2,2]-transforms[i][:2,2]+H[:2,2])))
+            for _, i, j, H in edges if i in transforms and j in transforms]
+        if graph['layout_residuals'] and max(d['residual_px'] for d in graph['layout_residuals']) > 25:
+            reporter.log('Layout residual exceeds 25 pixels; inspect the graph diagnostics.', 'warning', 'align')
+    if config.diagnostics_dir:
+        (Path(config.diagnostics_dir)/'graph.json').write_text(json.dumps(graph,indent=2))
     return [transforms[i] for i in included], included, reference, graph

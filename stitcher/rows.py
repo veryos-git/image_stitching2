@@ -45,6 +45,7 @@ def stitch_rows(parent, images, grays=None):
                 rep.image(stage, event['image'], event['label'], event['caption'])
 
         child_cfg = replace(cfg, stitching_mode="grid",
+                            flatfield=False,
                             input_max_width=0, preprocessing="none",
                             pairing="sequential" if intermediate else "unordered",
                             disconnected="largest",
@@ -136,6 +137,7 @@ def stitch_rows(parent, images, grays=None):
                         ". All completed rows are available separately.")
     included_count = sum(len(row_stats[i]['input_indices']) for i in included)
     result.stats.update(stitching_mode="rows_first", num_images=included_count,
+                        flatfield=cfg.flatfield,
                         input_max_width=cfg.input_max_width, preprocessing=cfg.preprocessing,
                         input_count=len(images), num_rows=len(included_rows), rows=row_stats,
                         completed_rows=completed_rows, included_rows=included_rows,

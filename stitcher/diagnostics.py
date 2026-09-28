@@ -32,14 +32,16 @@ def spatial_sample(matches, shape, budget):
                        {**matches.metadata,'sampling':dict(policy='8x8 spatial round-robin, descending native score',seed=0,original_count=n,budget=budget)})
 
 
-def evaluate_pair(engine, a, b, config, pair):
+def evaluate_pair(engine, a, b, config, pair, matches=None, predicted_shift=None, prediction_radius=None):
     from .unordered import reliable_edge
     from .catalog import CATALOG
     started = time.perf_counter()
-    m = spatial_sample(match_pair(engine,a,b),a.shape,min(MAX_CORRESPONDENCES,config.engine_options.get('dense_sample_budget',MAX_CORRESPONDENCES)))
+    m = spatial_sample(matches if matches is not None else match_pair(engine,a,b),a.shape,min(MAX_CORRESPONDENCES,config.engine_options.get('dense_sample_budget',MAX_CORRESPONDENCES)))
     details = {}
     H,count,reason = reliable_edge(m.points0,m.points1,a.shape,b.shape,config.ransac_thresh,config.alignment,details=details)
     candidate = details.get('transform',H)
+    if H is not None and predicted_shift is not None and np.linalg.norm(H[:2,2]-predicted_shift) > prediction_radius:
+        H, reason = None, 'Retry translation disagrees with the predicted layout'
     residuals = np.full(len(m.points0),np.nan)
     if candidate is not None:
         try:
